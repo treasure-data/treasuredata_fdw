@@ -1,0 +1,8 @@
+/log/
+/results/
+/tmp_check/
+*.o
+*.so
+target
+Cargo.lock
+test_bridge
