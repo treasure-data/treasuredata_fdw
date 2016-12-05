@@ -168,24 +168,6 @@ treasuredata_fdw_validator(PG_FUNCTION_ARGS)
 	ListCell   *cell;
 
 	/*
-	 * Only superusers are allowed to set options of a file_fdw foreign table.
-	 * This is because the filename is one of those options, and we don't want
-	 * non-superusers to be able to determine which file gets read.
-	 *
-	 * Putting this sort of permissions check in a validator is a bit of a
-	 * crock, but there doesn't seem to be any other place that can enforce
-	 * the check more cleanly.
-	 *
-	 * Note that the valid_options[] array disallows setting filename at any
-	 * options level other than foreign table --- otherwise there'd still be a
-	 * security hole.
-	 */
-	if (catalog == ForeignTableRelationId && !superuser())
-		ereport(ERROR,
-		        (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-		         errmsg("only superuser can change options of a treasuredata_fdw foreign table")));
-
-	/*
 	 * Check that only options supported by treasuredata_fdw, and allowed for the
 	 * current object type, are given.
 	 */
