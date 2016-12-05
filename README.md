@@ -36,7 +36,7 @@ CREATE FOREIGN TABLE sample_datasets (
     size integer,
     method varchar
 )
-SERVER treasuredata_fdw OPTIONS (
+SERVER treasuredata_server OPTIONS (
     apikey 'your_api_key',
     database 'sample_datasets',
     query_engine 'presto',
