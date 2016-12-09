@@ -1,144 +1,92 @@
-#include "postgres.h"
-#include "access/relscan.h"
-#include "catalog/pg_foreign_server.h"
-#include "catalog/pg_foreign_table.h"
-#include "catalog/pg_type.h"
-#include "commands/defrem.h"
-#include "commands/explain.h"
-#include "foreign/fdwapi.h"
+/*-------------------------------------------------------------------------
+ *
+ * postgres_fdw.h
+ *		  Foreign-data wrapper for remote PostgreSQL servers
+ *
+ * Portions Copyright (c) 2012-2015, PostgreSQL Global Development Group
+ *
+ * IDENTIFICATION
+ *		  contrib/postgres_fdw/postgres_fdw.h
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifndef POSTGRES_FDW_H
+#define POSTGRES_FDW_H
+
 #include "foreign/foreign.h"
-#include "funcapi.h"
 #include "lib/stringinfo.h"
-#include "nodes/bitmapset.h"
-#include "nodes/makefuncs.h"
-#include "nodes/pg_list.h"
 #include "nodes/relation.h"
-#include "utils/builtins.h"
-#include "utils/syscache.h"
+#include "utils/relcache.h"
 
-#ifndef PG_TREASUREDATA_FDW_H
-#define PG_TREASUREDATA_FDW_H
-
-/* Data structures */
-
-typedef struct ConversionInfo
-{
-	char	   *attrname;
-	FmgrInfo   *attinfunc;
-	FmgrInfo   *attoutfunc;
-	Oid			atttypoid;
-	Oid			attioparam;
-	int32		atttypmod;
-	int			attnum;
-	bool		is_array;
-	int			attndims;
-	bool		need_quote;
-} ConversionInfo;
+#include "libpq-fe.h"
 
 typedef struct TdFdwOption
 {
-	char *endpoint;      /* endpoint */
-	char *query_engine;  /* query_engine */
-	char *apikey;        /* apikey */
-	char *database;      /* database name */
-	char *table;         /* target table name */
-	char *query;         /* pre-defined query */
+    char *endpoint;      /* endpoint */
+    char *query_engine;  /* query_engine */
+    char *apikey;        /* apikey */
+    char *database;      /* database name */
+    char *table;         /* target table name */
 }   TdFdwOption;
 
-typedef struct TdFdwPlanState
-{
-	Oid			foreigntableid;
-	AttrNumber	numattrs;
-	List	   *target_list;
-	List	   *qual_list;
-	int			startupCost;
-	ConversionInfo **cinfos;
-	List	   *pathkeys; /* list of TdFdwDeparsedSortGroup) */
-}	TdFdwPlanState;
+#if 0
+/* in postgres_fdw.c */
+extern int	set_transmission_modes(void);
+extern void reset_transmission_modes(int nestlevel);
 
-typedef struct TdFdwExecState
-{
-	void       *td_client;
-	/* Information carried from the plan phase. */
-	Oid			foreigntableid;
-	List	   *target_list;
-	List	   *qual_list;
-	Datum	   *values;
-	bool	   *nulls;
-	ConversionInfo **cinfos;
-	int        *scaned_column_indexes;
-	/* Common buffer to avoid repeated allocations */
-	StringInfo	buffer;
-	AttrNumber	rowidAttno;
-	char	   *rowidAttrName;
-	List	   *pathkeys; /* list of TdFdwDeparsedSortGroup) */
-}	TdFdwExecState;
+/* in connection.c */
+extern PGconn *GetConnection(ForeignServer *server, UserMapping *user,
+			  bool will_prep_stmt);
+extern void ReleaseConnection(PGconn *conn);
+extern unsigned int GetCursorNumber(PGconn *conn);
+extern unsigned int GetPrepStmtNumber(PGconn *conn);
+extern void pgfdw_report_error(int elevel, PGresult *res, PGconn *conn,
+				   bool clear, const char *sql);
 
-typedef struct TdFdwBaseQual
-{
-	AttrNumber	varattno;
-	NodeTag		right_type;
-	Oid			typeoid;
-	char	   *opname;
-	bool		isArray;
-	bool		useOr;
-}	TdFdwBaseQual;
+/* in option.c */
+extern int ExtractConnectionOptions(List *defelems,
+						 const char **keywords,
+						 const char **values);
+#endif
+extern void ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option);
 
-typedef struct TdFdwConstQual
-{
-	TdFdwBaseQual base;
-	Datum		value;
-	bool		isnull;
-}	TdFdwConstQual;
+/* in deparse.c */
+extern void classifyConditions(PlannerInfo *root,
+				   RelOptInfo *baserel,
+				   List *input_conds,
+				   List **remote_conds,
+				   List **local_conds);
+extern bool is_foreign_expr(PlannerInfo *root,
+				RelOptInfo *baserel,
+				Expr *expr);
+extern void deparseSelectSql(StringInfo buf,
+				 PlannerInfo *root,
+				 RelOptInfo *baserel,
+				 Bitmapset *attrs_used,
+				 List **retrieved_attrs);
+extern void appendWhereClause(StringInfo buf,
+				  PlannerInfo *root,
+				  RelOptInfo *baserel,
+				  List *exprs,
+				  bool is_first,
+				  List **params);
+#if 0
+extern void deparseInsertSql(StringInfo buf, PlannerInfo *root,
+				 Index rtindex, Relation rel,
+				 List *targetAttrs, bool doNothing, List *returningList,
+				 List **retrieved_attrs);
+extern void deparseUpdateSql(StringInfo buf, PlannerInfo *root,
+				 Index rtindex, Relation rel,
+				 List *targetAttrs, List *returningList,
+				 List **retrieved_attrs);
+extern void deparseDeleteSql(StringInfo buf, PlannerInfo *root,
+				 Index rtindex, Relation rel,
+				 List *returningList,
+				 List **retrieved_attrs);
+extern void deparseAnalyzeSizeSql(StringInfo buf, Relation rel);
+extern void deparseAnalyzeSql(StringInfo buf, Relation rel,
+				  List **retrieved_attrs);
+#endif
+extern void deparseStringLiteral(StringInfo buf, const char *val);
 
-typedef struct TdFdwVarQual
-{
-	TdFdwBaseQual base;
-	AttrNumber	rightvarattno;
-}	TdFdwVarQual;
-
-typedef struct TdFdwParamQual
-{
-	TdFdwBaseQual base;
-	Expr	   *expr;
-}	TdFdwParamQual;
-
-typedef struct TdFdwDeparsedSortGroup
-{
-	Name 			attname;
-	int				attnum;
-	bool			reversed;
-	bool			nulls_first;
-	Name			collate;
-	PathKey	*key;
-} TdFdwDeparsedSortGroup;
-
-/* Hash table mapping oid to fdw instances */
-extern PGDLLIMPORT HTAB *InstancesHash;
-
-
-/* query.c */
-extern void extractRestrictions(Relids base_relids, Expr *node, List **quals);
-extern List	*extractColumns(List *reltargetlist, List *restrictinfolist);
-extern void initConversioninfo(ConversionInfo ** cinfo,
-                               AttInMetadata *attinmeta);
-
-extern Value *colnameFromVar(Var *var, PlannerInfo *root,
-                             TdFdwPlanState * state);
-
-extern void computeDeparsedSortGroup(List *deparsed, TdFdwPlanState *planstate,
-                                     List **apply_pathkeys, List **deparsed_pathkeys);
-
-extern List	*findPaths(PlannerInfo *root, RelOptInfo *baserel, List *possiblePaths,
-                       int startupCost, TdFdwPlanState *state,
-                       List *apply_pathkeys, List *deparsed_pathkeys);
-
-extern List *deparse_sortgroup(PlannerInfo *root, Oid foreigntableid, RelOptInfo *rel);
-
-extern void *datumToPython(Datum node, Oid typeoid, ConversionInfo * cinfo);
-
-extern List	*serializeDeparsedSortGroup(List *pathkeys);
-extern List	*deserializeDeparsedSortGroup(List *items);
-
-#endif   /* PG_TREASUREDATA_FDW_H */
-
+#endif   /* POSTGRES_FDW_H */
