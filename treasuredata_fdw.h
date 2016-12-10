@@ -22,11 +22,11 @@
 
 typedef struct TdFdwOption
 {
-    char *endpoint;      /* endpoint */
-    char *query_engine;  /* query_engine */
-    char *apikey;        /* apikey */
-    char *database;      /* database name */
-    char *table;         /* target table name */
+	char *endpoint;      /* endpoint */
+	char *query_engine;  /* query_engine */
+	char *apikey;        /* apikey */
+	char *database;      /* database name */
+	char *table;         /* target table name */
 }   TdFdwOption;
 
 /* in treasuredata_fdw.c */
@@ -37,39 +37,39 @@ extern void ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option);
 
 /* in deparse.c */
 extern void classifyConditions(PlannerInfo *root,
-				   RelOptInfo *baserel,
-				   List *input_conds,
-				   List **remote_conds,
-				   List **local_conds);
+                               RelOptInfo *baserel,
+                               List *input_conds,
+                               List **remote_conds,
+                               List **local_conds);
 extern bool is_foreign_expr(PlannerInfo *root,
-				RelOptInfo *baserel,
-				Expr *expr);
+                            RelOptInfo *baserel,
+                            Expr *expr);
 extern void deparseSelectSql(StringInfo buf,
-				 PlannerInfo *root,
-				 RelOptInfo *baserel,
-				 Bitmapset *attrs_used,
-				 List **retrieved_attrs);
+                             PlannerInfo *root,
+                             RelOptInfo *baserel,
+                             Bitmapset *attrs_used,
+                             List **retrieved_attrs);
 extern void appendWhereClause(StringInfo buf,
-				  PlannerInfo *root,
-				  RelOptInfo *baserel,
-				  List *exprs,
-				  bool is_first,
-				  List **params);
+                              PlannerInfo *root,
+                              RelOptInfo *baserel,
+                              List *exprs,
+                              bool is_first,
+                              List **params);
 extern void deparseInsertSql(StringInfo buf, PlannerInfo *root,
-				 Index rtindex, Relation rel,
-				 List *targetAttrs, bool doNothing, List *returningList,
-				 List **retrieved_attrs);
+                             Index rtindex, Relation rel,
+                             List *targetAttrs, bool doNothing, List *returningList,
+                             List **retrieved_attrs);
 extern void deparseUpdateSql(StringInfo buf, PlannerInfo *root,
-				 Index rtindex, Relation rel,
-				 List *targetAttrs, List *returningList,
-				 List **retrieved_attrs);
+                             Index rtindex, Relation rel,
+                             List *targetAttrs, List *returningList,
+                             List **retrieved_attrs);
 extern void deparseDeleteSql(StringInfo buf, PlannerInfo *root,
-				 Index rtindex, Relation rel,
-				 List *returningList,
-				 List **retrieved_attrs);
+                             Index rtindex, Relation rel,
+                             List *returningList,
+                             List **retrieved_attrs);
 extern void deparseAnalyzeSizeSql(StringInfo buf, Relation rel);
 extern void deparseAnalyzeSql(StringInfo buf, Relation rel,
-				  List **retrieved_attrs);
+                              List **retrieved_attrs);
 extern void deparseStringLiteral(StringInfo buf, const char *val);
 
 #endif   /* TREASUREDATA_FDW_H */

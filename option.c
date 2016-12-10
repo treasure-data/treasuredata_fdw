@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * option.c
- *		  FDW option handling for treasuredata_fdw 
+ *		  FDW option handling for treasuredata_fdw
  *
  * Portions Copyright (c) 2016, Mitsunori Komatsu
  *
@@ -51,7 +51,7 @@ static const struct PgFdwOption valid_options[] =
 /*
  * Check if the option is valid.
  */
-static void 
+static void
 validate_option(DefElem *def, Oid context)
 {
 	const struct PgFdwOption *opt;

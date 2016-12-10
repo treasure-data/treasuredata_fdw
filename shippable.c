@@ -69,9 +69,9 @@ InvalidateShippableCacheCallback(Datum arg, int cacheid, uint32 hashvalue)
 	while ((entry = (ShippableCacheEntry *) hash_seq_search(&status)) != NULL)
 	{
 		if (hash_search(ShippableCacheHash,
-						(void *) &entry->key,
-						HASH_REMOVE,
-						NULL) == NULL)
+		                (void *) &entry->key,
+		                HASH_REMOVE,
+		                NULL) == NULL)
 			elog(ERROR, "hash table corrupted");
 	}
 }
@@ -89,12 +89,12 @@ InitializeShippableCache(void)
 	ctl.keysize = sizeof(ShippableCacheKey);
 	ctl.entrysize = sizeof(ShippableCacheEntry);
 	ShippableCacheHash =
-		hash_create("Shippability cache", 256, &ctl, HASH_ELEM | HASH_BLOBS);
+	    hash_create("Shippability cache", 256, &ctl, HASH_ELEM | HASH_BLOBS);
 
 	/* Set up invalidation callback on pg_foreign_server. */
 	CacheRegisterSyscacheCallback(FOREIGNSERVEROID,
-								  InvalidateShippableCacheCallback,
-								  (Datum) 0);
+	                              InvalidateShippableCacheCallback,
+	                              (Datum) 0);
 }
 
 /*
@@ -118,7 +118,7 @@ lookup_shippable(Oid objectId, Oid classId, PgFdwRelationInfo *fpinfo)
 
 	/* If so, is that extension in fpinfo->shippable_extensions? */
 	if (OidIsValid(extensionOid) &&
-		list_member_oid(fpinfo->shippable_extensions, extensionOid))
+	        list_member_oid(fpinfo->shippable_extensions, extensionOid))
 		return true;
 
 	return false;
@@ -176,10 +176,10 @@ is_shippable(Oid objectId, Oid classId, PgFdwRelationInfo *fpinfo)
 
 	/* See if we already cached the result. */
 	entry = (ShippableCacheEntry *)
-		hash_search(ShippableCacheHash,
-					(void *) &key,
-					HASH_FIND,
-					NULL);
+	        hash_search(ShippableCacheHash,
+	                    (void *) &key,
+	                    HASH_FIND,
+	                    NULL);
 
 	if (!entry)
 	{
@@ -192,10 +192,10 @@ is_shippable(Oid objectId, Oid classId, PgFdwRelationInfo *fpinfo)
 		 * cache invalidation.
 		 */
 		entry = (ShippableCacheEntry *)
-			hash_search(ShippableCacheHash,
-						(void *) &key,
-						HASH_ENTER,
-						NULL);
+		        hash_search(ShippableCacheHash,
+		                    (void *) &key,
+		                    HASH_ENTER,
+		                    NULL);
 
 		entry->shippable = shippable;
 	}

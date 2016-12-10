@@ -79,27 +79,27 @@ typedef struct deparse_expr_cxt
  * remote server.
  */
 static bool foreign_expr_walker(Node *node,
-					foreign_glob_cxt *glob_cxt,
-					foreign_loc_cxt *outer_cxt);
+                                foreign_glob_cxt *glob_cxt,
+                                foreign_loc_cxt *outer_cxt);
 static bool is_builtin(Oid procid);
 
 /*
  * Functions to construct string representation of a node tree.
  */
 static void deparseTargetList(StringInfo buf,
-				  PlannerInfo *root,
-				  Index rtindex,
-				  Relation rel,
-				  bool is_returning,
-				  Bitmapset *attrs_used,
-				  List **retrieved_attrs);
+                              PlannerInfo *root,
+                              Index rtindex,
+                              Relation rel,
+                              bool is_returning,
+                              Bitmapset *attrs_used,
+                              List **retrieved_attrs);
 static void deparseReturningList(StringInfo buf, PlannerInfo *root,
-					 Index rtindex, Relation rel,
-					 bool trig_after_row,
-					 List *returningList,
-					 List **retrieved_attrs);
+                                 Index rtindex, Relation rel,
+                                 bool trig_after_row,
+                                 List *returningList,
+                                 List **retrieved_attrs);
 static void deparseColumnRef(StringInfo buf, int varno, int varattno,
-				 PlannerInfo *root);
+                             PlannerInfo *root);
 static void deparseRelation(StringInfo buf, Relation rel);
 static void deparseExpr(Expr *expr, deparse_expr_cxt *context);
 static void deparseVar(Var *node, deparse_expr_cxt *context);
@@ -111,15 +111,15 @@ static void deparseOpExpr(OpExpr *node, deparse_expr_cxt *context);
 static void deparseOperatorName(StringInfo buf, Form_pg_operator opform);
 static void deparseDistinctExpr(DistinctExpr *node, deparse_expr_cxt *context);
 static void deparseScalarArrayOpExpr(ScalarArrayOpExpr *node,
-						 deparse_expr_cxt *context);
+                                     deparse_expr_cxt *context);
 static void deparseRelabelType(RelabelType *node, deparse_expr_cxt *context);
 static void deparseBoolExpr(BoolExpr *node, deparse_expr_cxt *context);
 static void deparseNullTest(NullTest *node, deparse_expr_cxt *context);
 static void deparseArrayExpr(ArrayExpr *node, deparse_expr_cxt *context);
 static void printRemoteParam(int paramindex, Oid paramtype, int32 paramtypmod,
-				 deparse_expr_cxt *context);
+                             deparse_expr_cxt *context);
 static void printRemotePlaceholder(Oid paramtype, int32 paramtypmod,
-					   deparse_expr_cxt *context);
+                                   deparse_expr_cxt *context);
 
 
 /*
@@ -130,10 +130,10 @@ static void printRemotePlaceholder(Oid paramtype, int32 paramtypmod,
  */
 void
 classifyConditions(PlannerInfo *root,
-				   RelOptInfo *baserel,
-				   List *input_conds,
-				   List **remote_conds,
-				   List **local_conds)
+                   RelOptInfo *baserel,
+                   List *input_conds,
+                   List **remote_conds,
+                   List **local_conds)
 {
 	ListCell   *lc;
 
@@ -156,8 +156,8 @@ classifyConditions(PlannerInfo *root,
  */
 bool
 is_foreign_expr(PlannerInfo *root,
-				RelOptInfo *baserel,
-				Expr *expr)
+                RelOptInfo *baserel,
+                Expr *expr)
 {
 	foreign_glob_cxt glob_cxt;
 	foreign_loc_cxt loc_cxt;
@@ -205,8 +205,8 @@ is_foreign_expr(PlannerInfo *root,
  */
 static bool
 foreign_expr_walker(Node *node,
-					foreign_glob_cxt *glob_cxt,
-					foreign_loc_cxt *outer_cxt)
+                    foreign_glob_cxt *glob_cxt,
+                    foreign_loc_cxt *outer_cxt)
 {
 	bool		check_type = true;
 	foreign_loc_cxt inner_cxt;
@@ -223,373 +223,373 @@ foreign_expr_walker(Node *node,
 
 	switch (nodeTag(node))
 	{
-		case T_Var:
-			{
-				Var		   *var = (Var *) node;
+	case T_Var:
+	{
+		Var		   *var = (Var *) node;
 
-				/*
-				 * If the Var is from the foreign table, we consider its
-				 * collation (if any) safe to use.  If it is from another
-				 * table, we treat its collation the same way as we would a
-				 * Param's collation, ie it's not safe for it to have a
-				 * non-default collation.
-				 */
-				if (var->varno == glob_cxt->foreignrel->relid &&
-					var->varlevelsup == 0)
-				{
-					/* Var belongs to foreign table */
-
-					/*
-					 * System columns other than ctid should not be sent to
-					 * the remote, since we don't make any effort to ensure
-					 * that local and remote values match (tableoid, in
-					 * particular, almost certainly doesn't match).
-					 */
-					if (var->varattno < 0 &&
-						var->varattno != SelfItemPointerAttributeNumber)
-						return false;
-
-					/* Else check the collation */
-					collation = var->varcollid;
-					state = OidIsValid(collation) ? FDW_COLLATE_SAFE : FDW_COLLATE_NONE;
-				}
-				else
-				{
-					/* Var belongs to some other table */
-					collation = var->varcollid;
-					if (collation == InvalidOid ||
-						collation == DEFAULT_COLLATION_OID)
-					{
-						/*
-						 * It's noncollatable, or it's safe to combine with a
-						 * collatable foreign Var, so set state to NONE.
-						 */
-						state = FDW_COLLATE_NONE;
-					}
-					else
-					{
-						/*
-						 * Do not fail right away, since the Var might appear
-						 * in a collation-insensitive context.
-						 */
-						state = FDW_COLLATE_UNSAFE;
-					}
-				}
-			}
-			break;
-		case T_Const:
-			{
-				Const	   *c = (Const *) node;
-
-				/*
-				 * If the constant has nondefault collation, either it's of a
-				 * non-builtin type, or it reflects folding of a CollateExpr.
-				 * It's unsafe to send to the remote unless it's used in a
-				 * non-collation-sensitive context.
-				 */
-				collation = c->constcollid;
-				if (collation == InvalidOid ||
-					collation == DEFAULT_COLLATION_OID)
-					state = FDW_COLLATE_NONE;
-				else
-					state = FDW_COLLATE_UNSAFE;
-			}
-			break;
-		case T_Param:
-			{
-				Param	   *p = (Param *) node;
-
-				/*
-				 * Collation rule is same as for Consts and non-foreign Vars.
-				 */
-				collation = p->paramcollid;
-				if (collation == InvalidOid ||
-					collation == DEFAULT_COLLATION_OID)
-					state = FDW_COLLATE_NONE;
-				else
-					state = FDW_COLLATE_UNSAFE;
-			}
-			break;
-		case T_ArrayRef:
-			{
-				ArrayRef   *ar = (ArrayRef *) node;
-
-				/* Assignment should not be in restrictions. */
-				if (ar->refassgnexpr != NULL)
-					return false;
-
-				/*
-				 * Recurse to remaining subexpressions.  Since the array
-				 * subscripts must yield (noncollatable) integers, they won't
-				 * affect the inner_cxt state.
-				 */
-				if (!foreign_expr_walker((Node *) ar->refupperindexpr,
-										 glob_cxt, &inner_cxt))
-					return false;
-				if (!foreign_expr_walker((Node *) ar->reflowerindexpr,
-										 glob_cxt, &inner_cxt))
-					return false;
-				if (!foreign_expr_walker((Node *) ar->refexpr,
-										 glob_cxt, &inner_cxt))
-					return false;
-
-				/*
-				 * Array subscripting should yield same collation as input,
-				 * but for safety use same logic as for function nodes.
-				 */
-				collation = ar->refcollid;
-				if (collation == InvalidOid)
-					state = FDW_COLLATE_NONE;
-				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
-						 collation == inner_cxt.collation)
-					state = FDW_COLLATE_SAFE;
-				else if (collation == DEFAULT_COLLATION_OID)
-					state = FDW_COLLATE_NONE;
-				else
-					state = FDW_COLLATE_UNSAFE;
-			}
-			break;
-		case T_FuncExpr:
-			{
-				FuncExpr   *fe = (FuncExpr *) node;
-
-				/*
-				 * If function used by the expression is not built-in, it
-				 * can't be sent to remote because it might have incompatible
-				 * semantics on remote side.
-				 */
-				if (!is_builtin(fe->funcid))
-					return false;
-
-				/*
-				 * Recurse to input subexpressions.
-				 */
-				if (!foreign_expr_walker((Node *) fe->args,
-										 glob_cxt, &inner_cxt))
-					return false;
-
-				/*
-				 * If function's input collation is not derived from a foreign
-				 * Var, it can't be sent to remote.
-				 */
-				if (fe->inputcollid == InvalidOid)
-					 /* OK, inputs are all noncollatable */ ;
-				else if (inner_cxt.state != FDW_COLLATE_SAFE ||
-						 fe->inputcollid != inner_cxt.collation)
-					return false;
-
-				/*
-				 * Detect whether node is introducing a collation not derived
-				 * from a foreign Var.  (If so, we just mark it unsafe for now
-				 * rather than immediately returning false, since the parent
-				 * node might not care.)
-				 */
-				collation = fe->funccollid;
-				if (collation == InvalidOid)
-					state = FDW_COLLATE_NONE;
-				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
-						 collation == inner_cxt.collation)
-					state = FDW_COLLATE_SAFE;
-				else if (collation == DEFAULT_COLLATION_OID)
-					state = FDW_COLLATE_NONE;
-				else
-					state = FDW_COLLATE_UNSAFE;
-			}
-			break;
-		case T_OpExpr:
-		case T_DistinctExpr:	/* struct-equivalent to OpExpr */
-			{
-				OpExpr	   *oe = (OpExpr *) node;
-
-				/*
-				 * Similarly, only built-in operators can be sent to remote.
-				 * (If the operator is, surely its underlying function is
-				 * too.)
-				 */
-				if (!is_builtin(oe->opno))
-					return false;
-
-				/*
-				 * Recurse to input subexpressions.
-				 */
-				if (!foreign_expr_walker((Node *) oe->args,
-										 glob_cxt, &inner_cxt))
-					return false;
-
-				/*
-				 * If operator's input collation is not derived from a foreign
-				 * Var, it can't be sent to remote.
-				 */
-				if (oe->inputcollid == InvalidOid)
-					 /* OK, inputs are all noncollatable */ ;
-				else if (inner_cxt.state != FDW_COLLATE_SAFE ||
-						 oe->inputcollid != inner_cxt.collation)
-					return false;
-
-				/* Result-collation handling is same as for functions */
-				collation = oe->opcollid;
-				if (collation == InvalidOid)
-					state = FDW_COLLATE_NONE;
-				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
-						 collation == inner_cxt.collation)
-					state = FDW_COLLATE_SAFE;
-				else if (collation == DEFAULT_COLLATION_OID)
-					state = FDW_COLLATE_NONE;
-				else
-					state = FDW_COLLATE_UNSAFE;
-			}
-			break;
-		case T_ScalarArrayOpExpr:
-			{
-				ScalarArrayOpExpr *oe = (ScalarArrayOpExpr *) node;
-
-				/*
-				 * Again, only built-in operators can be sent to remote.
-				 */
-				if (!is_builtin(oe->opno))
-					return false;
-
-				/*
-				 * Recurse to input subexpressions.
-				 */
-				if (!foreign_expr_walker((Node *) oe->args,
-										 glob_cxt, &inner_cxt))
-					return false;
-
-				/*
-				 * If operator's input collation is not derived from a foreign
-				 * Var, it can't be sent to remote.
-				 */
-				if (oe->inputcollid == InvalidOid)
-					 /* OK, inputs are all noncollatable */ ;
-				else if (inner_cxt.state != FDW_COLLATE_SAFE ||
-						 oe->inputcollid != inner_cxt.collation)
-					return false;
-
-				/* Output is always boolean and so noncollatable. */
-				collation = InvalidOid;
-				state = FDW_COLLATE_NONE;
-			}
-			break;
-		case T_RelabelType:
-			{
-				RelabelType *r = (RelabelType *) node;
-
-				/*
-				 * Recurse to input subexpression.
-				 */
-				if (!foreign_expr_walker((Node *) r->arg,
-										 glob_cxt, &inner_cxt))
-					return false;
-
-				/*
-				 * RelabelType must not introduce a collation not derived from
-				 * an input foreign Var (same logic as for a real function).
-				 */
-				collation = r->resultcollid;
-				if (collation == InvalidOid)
-					state = FDW_COLLATE_NONE;
-				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
-						 collation == inner_cxt.collation)
-					state = FDW_COLLATE_SAFE;
-				else if (collation == DEFAULT_COLLATION_OID)
-					state = FDW_COLLATE_NONE;
-				else
-					state = FDW_COLLATE_UNSAFE;
-			}
-			break;
-		case T_BoolExpr:
-			{
-				BoolExpr   *b = (BoolExpr *) node;
-
-				/*
-				 * Recurse to input subexpressions.
-				 */
-				if (!foreign_expr_walker((Node *) b->args,
-										 glob_cxt, &inner_cxt))
-					return false;
-
-				/* Output is always boolean and so noncollatable. */
-				collation = InvalidOid;
-				state = FDW_COLLATE_NONE;
-			}
-			break;
-		case T_NullTest:
-			{
-				NullTest   *nt = (NullTest *) node;
-
-				/*
-				 * Recurse to input subexpressions.
-				 */
-				if (!foreign_expr_walker((Node *) nt->arg,
-										 glob_cxt, &inner_cxt))
-					return false;
-
-				/* Output is always boolean and so noncollatable. */
-				collation = InvalidOid;
-				state = FDW_COLLATE_NONE;
-			}
-			break;
-		case T_ArrayExpr:
-			{
-				ArrayExpr  *a = (ArrayExpr *) node;
-
-				/*
-				 * Recurse to input subexpressions.
-				 */
-				if (!foreign_expr_walker((Node *) a->elements,
-										 glob_cxt, &inner_cxt))
-					return false;
-
-				/*
-				 * ArrayExpr must not introduce a collation not derived from
-				 * an input foreign Var (same logic as for a function).
-				 */
-				collation = a->array_collid;
-				if (collation == InvalidOid)
-					state = FDW_COLLATE_NONE;
-				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
-						 collation == inner_cxt.collation)
-					state = FDW_COLLATE_SAFE;
-				else if (collation == DEFAULT_COLLATION_OID)
-					state = FDW_COLLATE_NONE;
-				else
-					state = FDW_COLLATE_UNSAFE;
-			}
-			break;
-		case T_List:
-			{
-				List	   *l = (List *) node;
-				ListCell   *lc;
-
-				/*
-				 * Recurse to component subexpressions.
-				 */
-				foreach(lc, l)
-				{
-					if (!foreign_expr_walker((Node *) lfirst(lc),
-											 glob_cxt, &inner_cxt))
-						return false;
-				}
-
-				/*
-				 * When processing a list, collation state just bubbles up
-				 * from the list elements.
-				 */
-				collation = inner_cxt.collation;
-				state = inner_cxt.state;
-
-				/* Don't apply exprType() to the list. */
-				check_type = false;
-			}
-			break;
-		default:
+		/*
+		 * If the Var is from the foreign table, we consider its
+		 * collation (if any) safe to use.  If it is from another
+		 * table, we treat its collation the same way as we would a
+		 * Param's collation, ie it's not safe for it to have a
+		 * non-default collation.
+		 */
+		if (var->varno == glob_cxt->foreignrel->relid &&
+		        var->varlevelsup == 0)
+		{
+			/* Var belongs to foreign table */
 
 			/*
-			 * If it's anything else, assume it's unsafe.  This list can be
-			 * expanded later, but don't forget to add deparse support below.
+			 * System columns other than ctid should not be sent to
+			 * the remote, since we don't make any effort to ensure
+			 * that local and remote values match (tableoid, in
+			 * particular, almost certainly doesn't match).
 			 */
+			if (var->varattno < 0 &&
+			        var->varattno != SelfItemPointerAttributeNumber)
+				return false;
+
+			/* Else check the collation */
+			collation = var->varcollid;
+			state = OidIsValid(collation) ? FDW_COLLATE_SAFE : FDW_COLLATE_NONE;
+		}
+		else
+		{
+			/* Var belongs to some other table */
+			collation = var->varcollid;
+			if (collation == InvalidOid ||
+			        collation == DEFAULT_COLLATION_OID)
+			{
+				/*
+				 * It's noncollatable, or it's safe to combine with a
+				 * collatable foreign Var, so set state to NONE.
+				 */
+				state = FDW_COLLATE_NONE;
+			}
+			else
+			{
+				/*
+				 * Do not fail right away, since the Var might appear
+				 * in a collation-insensitive context.
+				 */
+				state = FDW_COLLATE_UNSAFE;
+			}
+		}
+	}
+	break;
+	case T_Const:
+	{
+		Const	   *c = (Const *) node;
+
+		/*
+		 * If the constant has nondefault collation, either it's of a
+		 * non-builtin type, or it reflects folding of a CollateExpr.
+		 * It's unsafe to send to the remote unless it's used in a
+		 * non-collation-sensitive context.
+		 */
+		collation = c->constcollid;
+		if (collation == InvalidOid ||
+		        collation == DEFAULT_COLLATION_OID)
+			state = FDW_COLLATE_NONE;
+		else
+			state = FDW_COLLATE_UNSAFE;
+	}
+	break;
+	case T_Param:
+	{
+		Param	   *p = (Param *) node;
+
+		/*
+		 * Collation rule is same as for Consts and non-foreign Vars.
+		 */
+		collation = p->paramcollid;
+		if (collation == InvalidOid ||
+		        collation == DEFAULT_COLLATION_OID)
+			state = FDW_COLLATE_NONE;
+		else
+			state = FDW_COLLATE_UNSAFE;
+	}
+	break;
+	case T_ArrayRef:
+	{
+		ArrayRef   *ar = (ArrayRef *) node;
+
+		/* Assignment should not be in restrictions. */
+		if (ar->refassgnexpr != NULL)
 			return false;
+
+		/*
+		 * Recurse to remaining subexpressions.  Since the array
+		 * subscripts must yield (noncollatable) integers, they won't
+		 * affect the inner_cxt state.
+		 */
+		if (!foreign_expr_walker((Node *) ar->refupperindexpr,
+		                         glob_cxt, &inner_cxt))
+			return false;
+		if (!foreign_expr_walker((Node *) ar->reflowerindexpr,
+		                         glob_cxt, &inner_cxt))
+			return false;
+		if (!foreign_expr_walker((Node *) ar->refexpr,
+		                         glob_cxt, &inner_cxt))
+			return false;
+
+		/*
+		 * Array subscripting should yield same collation as input,
+		 * but for safety use same logic as for function nodes.
+		 */
+		collation = ar->refcollid;
+		if (collation == InvalidOid)
+			state = FDW_COLLATE_NONE;
+		else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+		         collation == inner_cxt.collation)
+			state = FDW_COLLATE_SAFE;
+		else if (collation == DEFAULT_COLLATION_OID)
+			state = FDW_COLLATE_NONE;
+		else
+			state = FDW_COLLATE_UNSAFE;
+	}
+	break;
+	case T_FuncExpr:
+	{
+		FuncExpr   *fe = (FuncExpr *) node;
+
+		/*
+		 * If function used by the expression is not built-in, it
+		 * can't be sent to remote because it might have incompatible
+		 * semantics on remote side.
+		 */
+		if (!is_builtin(fe->funcid))
+			return false;
+
+		/*
+		 * Recurse to input subexpressions.
+		 */
+		if (!foreign_expr_walker((Node *) fe->args,
+		                         glob_cxt, &inner_cxt))
+			return false;
+
+		/*
+		 * If function's input collation is not derived from a foreign
+		 * Var, it can't be sent to remote.
+		 */
+		if (fe->inputcollid == InvalidOid)
+			/* OK, inputs are all noncollatable */ ;
+		else if (inner_cxt.state != FDW_COLLATE_SAFE ||
+		         fe->inputcollid != inner_cxt.collation)
+			return false;
+
+		/*
+		 * Detect whether node is introducing a collation not derived
+		 * from a foreign Var.  (If so, we just mark it unsafe for now
+		 * rather than immediately returning false, since the parent
+		 * node might not care.)
+		 */
+		collation = fe->funccollid;
+		if (collation == InvalidOid)
+			state = FDW_COLLATE_NONE;
+		else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+		         collation == inner_cxt.collation)
+			state = FDW_COLLATE_SAFE;
+		else if (collation == DEFAULT_COLLATION_OID)
+			state = FDW_COLLATE_NONE;
+		else
+			state = FDW_COLLATE_UNSAFE;
+	}
+	break;
+	case T_OpExpr:
+	case T_DistinctExpr:	/* struct-equivalent to OpExpr */
+	{
+		OpExpr	   *oe = (OpExpr *) node;
+
+		/*
+		 * Similarly, only built-in operators can be sent to remote.
+		 * (If the operator is, surely its underlying function is
+		 * too.)
+		 */
+		if (!is_builtin(oe->opno))
+			return false;
+
+		/*
+		 * Recurse to input subexpressions.
+		 */
+		if (!foreign_expr_walker((Node *) oe->args,
+		                         glob_cxt, &inner_cxt))
+			return false;
+
+		/*
+		 * If operator's input collation is not derived from a foreign
+		 * Var, it can't be sent to remote.
+		 */
+		if (oe->inputcollid == InvalidOid)
+			/* OK, inputs are all noncollatable */ ;
+		else if (inner_cxt.state != FDW_COLLATE_SAFE ||
+		         oe->inputcollid != inner_cxt.collation)
+			return false;
+
+		/* Result-collation handling is same as for functions */
+		collation = oe->opcollid;
+		if (collation == InvalidOid)
+			state = FDW_COLLATE_NONE;
+		else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+		         collation == inner_cxt.collation)
+			state = FDW_COLLATE_SAFE;
+		else if (collation == DEFAULT_COLLATION_OID)
+			state = FDW_COLLATE_NONE;
+		else
+			state = FDW_COLLATE_UNSAFE;
+	}
+	break;
+	case T_ScalarArrayOpExpr:
+	{
+		ScalarArrayOpExpr *oe = (ScalarArrayOpExpr *) node;
+
+		/*
+		 * Again, only built-in operators can be sent to remote.
+		 */
+		if (!is_builtin(oe->opno))
+			return false;
+
+		/*
+		 * Recurse to input subexpressions.
+		 */
+		if (!foreign_expr_walker((Node *) oe->args,
+		                         glob_cxt, &inner_cxt))
+			return false;
+
+		/*
+		 * If operator's input collation is not derived from a foreign
+		 * Var, it can't be sent to remote.
+		 */
+		if (oe->inputcollid == InvalidOid)
+			/* OK, inputs are all noncollatable */ ;
+		else if (inner_cxt.state != FDW_COLLATE_SAFE ||
+		         oe->inputcollid != inner_cxt.collation)
+			return false;
+
+		/* Output is always boolean and so noncollatable. */
+		collation = InvalidOid;
+		state = FDW_COLLATE_NONE;
+	}
+	break;
+	case T_RelabelType:
+	{
+		RelabelType *r = (RelabelType *) node;
+
+		/*
+		 * Recurse to input subexpression.
+		 */
+		if (!foreign_expr_walker((Node *) r->arg,
+		                         glob_cxt, &inner_cxt))
+			return false;
+
+		/*
+		 * RelabelType must not introduce a collation not derived from
+		 * an input foreign Var (same logic as for a real function).
+		 */
+		collation = r->resultcollid;
+		if (collation == InvalidOid)
+			state = FDW_COLLATE_NONE;
+		else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+		         collation == inner_cxt.collation)
+			state = FDW_COLLATE_SAFE;
+		else if (collation == DEFAULT_COLLATION_OID)
+			state = FDW_COLLATE_NONE;
+		else
+			state = FDW_COLLATE_UNSAFE;
+	}
+	break;
+	case T_BoolExpr:
+	{
+		BoolExpr   *b = (BoolExpr *) node;
+
+		/*
+		 * Recurse to input subexpressions.
+		 */
+		if (!foreign_expr_walker((Node *) b->args,
+		                         glob_cxt, &inner_cxt))
+			return false;
+
+		/* Output is always boolean and so noncollatable. */
+		collation = InvalidOid;
+		state = FDW_COLLATE_NONE;
+	}
+	break;
+	case T_NullTest:
+	{
+		NullTest   *nt = (NullTest *) node;
+
+		/*
+		 * Recurse to input subexpressions.
+		 */
+		if (!foreign_expr_walker((Node *) nt->arg,
+		                         glob_cxt, &inner_cxt))
+			return false;
+
+		/* Output is always boolean and so noncollatable. */
+		collation = InvalidOid;
+		state = FDW_COLLATE_NONE;
+	}
+	break;
+	case T_ArrayExpr:
+	{
+		ArrayExpr  *a = (ArrayExpr *) node;
+
+		/*
+		 * Recurse to input subexpressions.
+		 */
+		if (!foreign_expr_walker((Node *) a->elements,
+		                         glob_cxt, &inner_cxt))
+			return false;
+
+		/*
+		 * ArrayExpr must not introduce a collation not derived from
+		 * an input foreign Var (same logic as for a function).
+		 */
+		collation = a->array_collid;
+		if (collation == InvalidOid)
+			state = FDW_COLLATE_NONE;
+		else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+		         collation == inner_cxt.collation)
+			state = FDW_COLLATE_SAFE;
+		else if (collation == DEFAULT_COLLATION_OID)
+			state = FDW_COLLATE_NONE;
+		else
+			state = FDW_COLLATE_UNSAFE;
+	}
+	break;
+	case T_List:
+	{
+		List	   *l = (List *) node;
+		ListCell   *lc;
+
+		/*
+		 * Recurse to component subexpressions.
+		 */
+		foreach(lc, l)
+		{
+			if (!foreign_expr_walker((Node *) lfirst(lc),
+			                         glob_cxt, &inner_cxt))
+				return false;
+		}
+
+		/*
+		 * When processing a list, collation state just bubbles up
+		 * from the list elements.
+		 */
+		collation = inner_cxt.collation;
+		state = inner_cxt.state;
+
+		/* Don't apply exprType() to the list. */
+		check_type = false;
+	}
+	break;
+	default:
+
+		/*
+		 * If it's anything else, assume it's unsafe.  This list can be
+		 * expanded later, but don't forget to add deparse support below.
+		 */
+		return false;
 	}
 
 	/*
@@ -613,34 +613,34 @@ foreign_expr_walker(Node *node,
 		/* Merge, or detect error if there's a collation conflict */
 		switch (state)
 		{
-			case FDW_COLLATE_NONE:
-				/* Nothing + nothing is still nothing */
-				break;
-			case FDW_COLLATE_SAFE:
-				if (collation != outer_cxt->collation)
+		case FDW_COLLATE_NONE:
+			/* Nothing + nothing is still nothing */
+			break;
+		case FDW_COLLATE_SAFE:
+			if (collation != outer_cxt->collation)
+			{
+				/*
+				 * Non-default collation always beats default.
+				 */
+				if (outer_cxt->collation == DEFAULT_COLLATION_OID)
+				{
+					/* Override previous parent state */
+					outer_cxt->collation = collation;
+				}
+				else if (collation != DEFAULT_COLLATION_OID)
 				{
 					/*
-					 * Non-default collation always beats default.
+					 * Conflict; show state as indeterminate.  We don't
+					 * want to "return false" right away, since parent
+					 * node might not care about collation.
 					 */
-					if (outer_cxt->collation == DEFAULT_COLLATION_OID)
-					{
-						/* Override previous parent state */
-						outer_cxt->collation = collation;
-					}
-					else if (collation != DEFAULT_COLLATION_OID)
-					{
-						/*
-						 * Conflict; show state as indeterminate.  We don't
-						 * want to "return false" right away, since parent
-						 * node might not care about collation.
-						 */
-						outer_cxt->state = FDW_COLLATE_UNSAFE;
-					}
+					outer_cxt->state = FDW_COLLATE_UNSAFE;
 				}
-				break;
-			case FDW_COLLATE_UNSAFE:
-				/* We're still conflicted ... */
-				break;
+			}
+			break;
+		case FDW_COLLATE_UNSAFE:
+			/* We're still conflicted ... */
+			break;
 		}
 	}
 
@@ -683,10 +683,10 @@ is_builtin(Oid oid)
  */
 void
 deparseSelectSql(StringInfo buf,
-				 PlannerInfo *root,
-				 RelOptInfo *baserel,
-				 Bitmapset *attrs_used,
-				 List **retrieved_attrs)
+                 PlannerInfo *root,
+                 RelOptInfo *baserel,
+                 Bitmapset *attrs_used,
+                 List **retrieved_attrs)
 {
 	RangeTblEntry *rte = planner_rt_fetch(baserel->relid, root);
 	Relation	rel;
@@ -702,7 +702,7 @@ deparseSelectSql(StringInfo buf,
 	 */
 	appendStringInfoString(buf, "SELECT ");
 	deparseTargetList(buf, root, baserel->relid, rel, false, attrs_used,
-					  retrieved_attrs);
+	                  retrieved_attrs);
 
 	/*
 	 * Construct FROM clause
@@ -723,12 +723,12 @@ deparseSelectSql(StringInfo buf,
  */
 static void
 deparseTargetList(StringInfo buf,
-				  PlannerInfo *root,
-				  Index rtindex,
-				  Relation rel,
-				  bool is_returning,
-				  Bitmapset *attrs_used,
-				  List **retrieved_attrs)
+                  PlannerInfo *root,
+                  Index rtindex,
+                  Relation rel,
+                  bool is_returning,
+                  Bitmapset *attrs_used,
+                  List **retrieved_attrs)
 {
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	bool		have_wholerow;
@@ -739,7 +739,7 @@ deparseTargetList(StringInfo buf,
 
 	/* If there's a whole-row reference, we'll need all the columns. */
 	have_wholerow = bms_is_member(0 - FirstLowInvalidHeapAttributeNumber,
-								  attrs_used);
+	                              attrs_used);
 
 	first = true;
 	for (i = 1; i <= tupdesc->natts; i++)
@@ -751,8 +751,8 @@ deparseTargetList(StringInfo buf,
 			continue;
 
 		if (have_wholerow ||
-			bms_is_member(i - FirstLowInvalidHeapAttributeNumber,
-						  attrs_used))
+		        bms_is_member(i - FirstLowInvalidHeapAttributeNumber,
+		                      attrs_used))
 		{
 			if (!first)
 				appendStringInfoString(buf, ", ");
@@ -771,7 +771,7 @@ deparseTargetList(StringInfo buf,
 	 * system columns.
 	 */
 	if (bms_is_member(SelfItemPointerAttributeNumber - FirstLowInvalidHeapAttributeNumber,
-					  attrs_used))
+	                  attrs_used))
 	{
 		if (!first)
 			appendStringInfoString(buf, ", ");
@@ -782,7 +782,7 @@ deparseTargetList(StringInfo buf,
 		appendStringInfoString(buf, "ctid");
 
 		*retrieved_attrs = lappend_int(*retrieved_attrs,
-									   SelfItemPointerAttributeNumber);
+		                               SelfItemPointerAttributeNumber);
 	}
 
 	/* Don't generate bad syntax if no undropped columns */
@@ -806,11 +806,11 @@ deparseTargetList(StringInfo buf,
  */
 void
 appendWhereClause(StringInfo buf,
-				  PlannerInfo *root,
-				  RelOptInfo *baserel,
-				  List *exprs,
-				  bool is_first,
-				  List **params)
+                  PlannerInfo *root,
+                  RelOptInfo *baserel,
+                  List *exprs,
+                  bool is_first,
+                  List **params)
 {
 	deparse_expr_cxt context;
 	int			nestlevel;
@@ -857,9 +857,9 @@ appendWhereClause(StringInfo buf,
  */
 void
 deparseInsertSql(StringInfo buf, PlannerInfo *root,
-				 Index rtindex, Relation rel,
-				 List *targetAttrs, bool doNothing,
-				 List *returningList, List **retrieved_attrs)
+                 Index rtindex, Relation rel,
+                 List *targetAttrs, bool doNothing,
+                 List *returningList, List **retrieved_attrs)
 {
 	AttrNumber	pindex;
 	bool		first;
@@ -907,8 +907,8 @@ deparseInsertSql(StringInfo buf, PlannerInfo *root,
 		appendStringInfoString(buf, " ON CONFLICT DO NOTHING");
 
 	deparseReturningList(buf, root, rtindex, rel,
-					   rel->trigdesc && rel->trigdesc->trig_insert_after_row,
-						 returningList, retrieved_attrs);
+	                     rel->trigdesc && rel->trigdesc->trig_insert_after_row,
+	                     returningList, retrieved_attrs);
 }
 
 /*
@@ -920,9 +920,9 @@ deparseInsertSql(StringInfo buf, PlannerInfo *root,
  */
 void
 deparseUpdateSql(StringInfo buf, PlannerInfo *root,
-				 Index rtindex, Relation rel,
-				 List *targetAttrs, List *returningList,
-				 List **retrieved_attrs)
+                 Index rtindex, Relation rel,
+                 List *targetAttrs, List *returningList,
+                 List **retrieved_attrs)
 {
 	AttrNumber	pindex;
 	bool		first;
@@ -949,8 +949,8 @@ deparseUpdateSql(StringInfo buf, PlannerInfo *root,
 	appendStringInfoString(buf, " WHERE ctid = $1");
 
 	deparseReturningList(buf, root, rtindex, rel,
-					   rel->trigdesc && rel->trigdesc->trig_update_after_row,
-						 returningList, retrieved_attrs);
+	                     rel->trigdesc && rel->trigdesc->trig_update_after_row,
+	                     returningList, retrieved_attrs);
 }
 
 /*
@@ -962,17 +962,17 @@ deparseUpdateSql(StringInfo buf, PlannerInfo *root,
  */
 void
 deparseDeleteSql(StringInfo buf, PlannerInfo *root,
-				 Index rtindex, Relation rel,
-				 List *returningList,
-				 List **retrieved_attrs)
+                 Index rtindex, Relation rel,
+                 List *returningList,
+                 List **retrieved_attrs)
 {
 	appendStringInfoString(buf, "DELETE FROM ");
 	deparseRelation(buf, rel);
 	appendStringInfoString(buf, " WHERE ctid = $1");
 
 	deparseReturningList(buf, root, rtindex, rel,
-					   rel->trigdesc && rel->trigdesc->trig_delete_after_row,
-						 returningList, retrieved_attrs);
+	                     rel->trigdesc && rel->trigdesc->trig_delete_after_row,
+	                     returningList, retrieved_attrs);
 }
 
 /*
@@ -980,10 +980,10 @@ deparseDeleteSql(StringInfo buf, PlannerInfo *root,
  */
 static void
 deparseReturningList(StringInfo buf, PlannerInfo *root,
-					 Index rtindex, Relation rel,
-					 bool trig_after_row,
-					 List *returningList,
-					 List **retrieved_attrs)
+                     Index rtindex, Relation rel,
+                     bool trig_after_row,
+                     List *returningList,
+                     List **retrieved_attrs)
 {
 	Bitmapset  *attrs_used = NULL;
 
@@ -991,7 +991,7 @@ deparseReturningList(StringInfo buf, PlannerInfo *root,
 	{
 		/* whole-row reference acquires all non-system columns */
 		attrs_used =
-			bms_make_singleton(0 - FirstLowInvalidHeapAttributeNumber);
+		    bms_make_singleton(0 - FirstLowInvalidHeapAttributeNumber);
 	}
 
 	if (returningList != NIL)
@@ -1001,12 +1001,12 @@ deparseReturningList(StringInfo buf, PlannerInfo *root,
 		 * query's RETURNING list.
 		 */
 		pull_varattnos((Node *) returningList, rtindex,
-					   &attrs_used);
+		               &attrs_used);
 	}
 
 	if (attrs_used != NULL)
 		deparseTargetList(buf, root, rtindex, rel, true, attrs_used,
-						  retrieved_attrs);
+		                  retrieved_attrs);
 	else
 		*retrieved_attrs = NIL;
 }
@@ -1181,7 +1181,7 @@ deparseRelation(StringInfo buf, Relation rel)
 
 #if 0
 	appendStringInfo(buf, "%s.%s",
-					 quote_identifier(nspname), quote_identifier(relname));
+	                 quote_identifier(nspname), quote_identifier(relname));
 #endif
 	appendStringInfo(buf, "%s", quote_identifier(relname));
 }
@@ -1232,46 +1232,46 @@ deparseExpr(Expr *node, deparse_expr_cxt *context)
 
 	switch (nodeTag(node))
 	{
-		case T_Var:
-			deparseVar((Var *) node, context);
-			break;
-		case T_Const:
-			deparseConst((Const *) node, context);
-			break;
-		case T_Param:
-			deparseParam((Param *) node, context);
-			break;
-		case T_ArrayRef:
-			deparseArrayRef((ArrayRef *) node, context);
-			break;
-		case T_FuncExpr:
-			deparseFuncExpr((FuncExpr *) node, context);
-			break;
-		case T_OpExpr:
-			deparseOpExpr((OpExpr *) node, context);
-			break;
-		case T_DistinctExpr:
-			deparseDistinctExpr((DistinctExpr *) node, context);
-			break;
-		case T_ScalarArrayOpExpr:
-			deparseScalarArrayOpExpr((ScalarArrayOpExpr *) node, context);
-			break;
-		case T_RelabelType:
-			deparseRelabelType((RelabelType *) node, context);
-			break;
-		case T_BoolExpr:
-			deparseBoolExpr((BoolExpr *) node, context);
-			break;
-		case T_NullTest:
-			deparseNullTest((NullTest *) node, context);
-			break;
-		case T_ArrayExpr:
-			deparseArrayExpr((ArrayExpr *) node, context);
-			break;
-		default:
-			elog(ERROR, "unsupported expression type for deparse: %d",
-				 (int) nodeTag(node));
-			break;
+	case T_Var:
+		deparseVar((Var *) node, context);
+		break;
+	case T_Const:
+		deparseConst((Const *) node, context);
+		break;
+	case T_Param:
+		deparseParam((Param *) node, context);
+		break;
+	case T_ArrayRef:
+		deparseArrayRef((ArrayRef *) node, context);
+		break;
+	case T_FuncExpr:
+		deparseFuncExpr((FuncExpr *) node, context);
+		break;
+	case T_OpExpr:
+		deparseOpExpr((OpExpr *) node, context);
+		break;
+	case T_DistinctExpr:
+		deparseDistinctExpr((DistinctExpr *) node, context);
+		break;
+	case T_ScalarArrayOpExpr:
+		deparseScalarArrayOpExpr((ScalarArrayOpExpr *) node, context);
+		break;
+	case T_RelabelType:
+		deparseRelabelType((RelabelType *) node, context);
+		break;
+	case T_BoolExpr:
+		deparseBoolExpr((BoolExpr *) node, context);
+		break;
+	case T_NullTest:
+		deparseNullTest((NullTest *) node, context);
+		break;
+	case T_ArrayExpr:
+		deparseArrayExpr((ArrayExpr *) node, context);
+		break;
+	default:
+		elog(ERROR, "unsupported expression type for deparse: %d",
+		     (int) nodeTag(node));
+		break;
 	}
 }
 
@@ -1289,7 +1289,7 @@ deparseVar(Var *node, deparse_expr_cxt *context)
 	StringInfo	buf = context->buf;
 
 	if (node->varno == context->foreignrel->relid &&
-		node->varlevelsup == 0)
+	        node->varlevelsup == 0)
 	{
 		/* Var belongs to foreign table */
 		deparseColumnRef(buf, node->varno, node->varattno, context->root);
@@ -1347,56 +1347,56 @@ deparseConst(Const *node, deparse_expr_cxt *context)
 		appendStringInfoString(buf, "NULL");
 #if 0
 		appendStringInfo(buf, "::%s",
-						 format_type_with_typemod(node->consttype,
-												  node->consttypmod));
+		                 format_type_with_typemod(node->consttype,
+		                         node->consttypmod));
 #endif
 		return;
 	}
 
 	getTypeOutputInfo(node->consttype,
-					  &typoutput, &typIsVarlena);
+	                  &typoutput, &typIsVarlena);
 	extval = OidOutputFunctionCall(typoutput, node->constvalue);
 
 	switch (node->consttype)
 	{
-		case INT2OID:
-		case INT4OID:
-		case INT8OID:
-		case OIDOID:
-		case FLOAT4OID:
-		case FLOAT8OID:
-		case NUMERICOID:
-			{
-				/*
-				 * No need to quote unless it's a special value such as 'NaN'.
-				 * See comments in get_const_expr().
-				 */
-				if (strspn(extval, "0123456789+-eE.") == strlen(extval))
-				{
-					if (extval[0] == '+' || extval[0] == '-')
-						appendStringInfo(buf, "(%s)", extval);
-					else
-						appendStringInfoString(buf, extval);
-					if (strcspn(extval, "eE.") != strlen(extval))
-						isfloat = true; /* it looks like a float */
-				}
-				else
-					appendStringInfo(buf, "'%s'", extval);
-			}
-			break;
-		case BITOID:
-		case VARBITOID:
-			appendStringInfo(buf, "B'%s'", extval);
-			break;
-		case BOOLOID:
-			if (strcmp(extval, "t") == 0)
-				appendStringInfoString(buf, "true");
+	case INT2OID:
+	case INT4OID:
+	case INT8OID:
+	case OIDOID:
+	case FLOAT4OID:
+	case FLOAT8OID:
+	case NUMERICOID:
+	{
+		/*
+		 * No need to quote unless it's a special value such as 'NaN'.
+		 * See comments in get_const_expr().
+		 */
+		if (strspn(extval, "0123456789+-eE.") == strlen(extval))
+		{
+			if (extval[0] == '+' || extval[0] == '-')
+				appendStringInfo(buf, "(%s)", extval);
 			else
-				appendStringInfoString(buf, "false");
-			break;
-		default:
-			deparseStringLiteral(buf, extval);
-			break;
+				appendStringInfoString(buf, extval);
+			if (strcspn(extval, "eE.") != strlen(extval))
+				isfloat = true; /* it looks like a float */
+		}
+		else
+			appendStringInfo(buf, "'%s'", extval);
+	}
+	break;
+	case BITOID:
+	case VARBITOID:
+		appendStringInfo(buf, "B'%s'", extval);
+		break;
+	case BOOLOID:
+		if (strcmp(extval, "t") == 0)
+			appendStringInfoString(buf, "true");
+		else
+			appendStringInfoString(buf, "false");
+		break;
+	default:
+		deparseStringLiteral(buf, extval);
+		break;
 	}
 #if 0
 	/*
@@ -1408,22 +1408,22 @@ deparseConst(Const *node, deparse_expr_cxt *context)
 	 */
 	switch (node->consttype)
 	{
-		case BOOLOID:
-		case INT4OID:
-		case UNKNOWNOID:
-			needlabel = false;
-			break;
-		case NUMERICOID:
-			needlabel = !isfloat || (node->consttypmod >= 0);
-			break;
-		default:
-			needlabel = true;
-			break;
+	case BOOLOID:
+	case INT4OID:
+	case UNKNOWNOID:
+		needlabel = false;
+		break;
+	case NUMERICOID:
+		needlabel = !isfloat || (node->consttypmod >= 0);
+		break;
+	default:
+		needlabel = true;
+		break;
 	}
 	if (needlabel)
 		appendStringInfo(buf, "::%s",
-						 format_type_with_typemod(node->consttype,
-												  node->consttypmod));
+		                 format_type_with_typemod(node->consttype,
+		                         node->consttypmod));
 #endif
 }
 
@@ -1552,7 +1552,7 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 		deparseExpr((Expr *) linitial(node->args), context);
 #if 0
 		appendStringInfo(buf, "::%s",
-						 format_type_with_typemod(rettype, coercedTypmod));
+		                 format_type_with_typemod(rettype, coercedTypmod));
 #endif
 		return;
 	}
@@ -1618,8 +1618,8 @@ deparseOpExpr(OpExpr *node, deparse_expr_cxt *context)
 
 	/* Sanity check. */
 	Assert((oprkind == 'r' && list_length(node->args) == 1) ||
-		   (oprkind == 'l' && list_length(node->args) == 1) ||
-		   (oprkind == 'b' && list_length(node->args) == 2));
+	       (oprkind == 'l' && list_length(node->args) == 1) ||
+	       (oprkind == 'b' && list_length(node->args) == 2));
 
 	/* Always parenthesize the expression. */
 	appendStringInfoChar(buf, '(');
@@ -1667,21 +1667,22 @@ deparseOperatorName(StringInfo buf, Form_pg_operator opform)
 		opnspname = get_namespace_name(opform->oprnamespace);
 		/* Print fully qualified operator name. */
 		appendStringInfo(buf, "OPERATOR(%s.%s)",
-						 quote_identifier(opnspname), opname);
+		                 quote_identifier(opnspname), opname);
 	}
 	else
 	{
-        if (strcmp(opname, "~~") == 0)
-        {
-            appendStringInfoString(buf, "LIKE");
-        }
-        else if (strcmp(opname, "!~~") == 0)
-        {
-            appendStringInfoString(buf, "NOT LIKE");
-        }
-        else {
-            appendStringInfoString(buf, opname);
-        }
+		if (strcmp(opname, "~~") == 0)
+		{
+			appendStringInfoString(buf, "LIKE");
+		}
+		else if (strcmp(opname, "!~~") == 0)
+		{
+			appendStringInfoString(buf, "NOT LIKE");
+		}
+		else
+		{
+			appendStringInfoString(buf, opname);
+		}
 	}
 }
 
@@ -1758,8 +1759,8 @@ deparseRelabelType(RelabelType *node, deparse_expr_cxt *context)
 #if 0
 	if (node->relabelformat != COERCE_IMPLICIT_CAST)
 		appendStringInfo(context->buf, "::%s",
-						 format_type_with_typemod(node->resulttype,
-												  node->resulttypmod));
+		                 format_type_with_typemod(node->resulttype,
+		                         node->resulttypmod));
 #endif
 }
 
@@ -1776,17 +1777,17 @@ deparseBoolExpr(BoolExpr *node, deparse_expr_cxt *context)
 
 	switch (node->boolop)
 	{
-		case AND_EXPR:
-			op = "AND";
-			break;
-		case OR_EXPR:
-			op = "OR";
-			break;
-		case NOT_EXPR:
-			appendStringInfoString(buf, "(NOT ");
-			deparseExpr(linitial(node->args), context);
-			appendStringInfoChar(buf, ')');
-			return;
+	case AND_EXPR:
+		op = "AND";
+		break;
+	case OR_EXPR:
+		op = "OR";
+		break;
+	case NOT_EXPR:
+		appendStringInfoString(buf, "(NOT ");
+		deparseExpr(linitial(node->args), context);
+		appendStringInfoChar(buf, ')');
+		return;
 	}
 
 	appendStringInfoChar(buf, '(');
@@ -1857,7 +1858,7 @@ deparseArrayExpr(ArrayExpr *node, deparse_expr_cxt *context)
 	/* If the array is empty, we need an explicit cast to the array type. */
 	if (node->elements == NIL)
 		appendStringInfo(buf, "::%s",
-						 format_type_with_typemod(node->array_typeid, -1));
+		                 format_type_with_typemod(node->array_typeid, -1));
 #endif
 }
 
@@ -1871,13 +1872,13 @@ deparseArrayExpr(ArrayExpr *node, deparse_expr_cxt *context)
  */
 static void
 printRemoteParam(int paramindex, Oid paramtype, int32 paramtypmod,
-				 deparse_expr_cxt *context)
+                 deparse_expr_cxt *context)
 {
 	StringInfo	buf = context->buf;
 #if 0
 	char	   *ptypename = format_type_with_typemod(paramtype, paramtypmod);
 
-     appendStringInfo(buf, "$%d::%s", paramindex, ptypename);
+	appendStringInfo(buf, "$%d::%s", paramindex, ptypename);
 #endif
 	appendStringInfo(buf, "$%d", paramindex);
 }
@@ -1900,7 +1901,7 @@ printRemoteParam(int paramindex, Oid paramtype, int32 paramtypmod,
  */
 static void
 printRemotePlaceholder(Oid paramtype, int32 paramtypmod,
-					   deparse_expr_cxt *context)
+                       deparse_expr_cxt *context)
 {
 	StringInfo	buf = context->buf;
 	char	   *ptypename = format_type_with_typemod(paramtype, paramtypmod);
