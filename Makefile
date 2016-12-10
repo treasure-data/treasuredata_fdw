@@ -2,7 +2,7 @@ RUSTLIBDIR = bridge_td_client_rust/target/release
 RUSTLIB = $(RUSTLIBDIR)/libbridge_td_client.a
 
 MODULE_big = treasuredata_fdw
-OBJS = treasuredata_fdw.o bridge.o query.o $(RUSTLIB)
+OBJS = treasuredata_fdw.o bridge.o deparse.o option.o $(RUSTLIB)
 PGFILEDESC = "treasuredata_fdw - foreign data wrapper for Treasure Data"
 
 ifdef DEBUG

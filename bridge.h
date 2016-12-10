@@ -1,5 +1,17 @@
-#ifndef PG_TREASUREDATA_FDW_BRIDGE_H
-#define PG_TREASUREDATA_FDW_BRIDGE_H
+/*-------------------------------------------------------------------------
+ *
+ * bridge.h
+ *        Bridge between C and Rust
+ *
+ * Portions Copyright (c) 2016, Mitsunori Komatsu
+ *
+ * IDENTIFICATION
+ *        bridge.h
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifndef TREASUREDATA_FDW_BRIDGE_H
+#define TREASUREDATA_FDW_BRIDGE_H
 
 extern void* issueQuery(
     const char *apikey, const char *endpoint,
@@ -10,5 +22,5 @@ extern int fetchResultRow(
     void *td_query_state, int natts, char **values
 );
 
-#endif   /* PG_TREASUREDATA_FDW_BRIDGE_H */
+#endif   /* TREASUREDATA_FDW_BRIDGE_H */
 
