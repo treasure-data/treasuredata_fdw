@@ -168,7 +168,7 @@ typedef struct TdFdwScanState
 /*
  * Execution state of a foreign insert/update/delete operation.
  */
-typedef struct PgFdwModifyState
+typedef struct TdFdwModifyState
 {
 	Relation	rel;			/* relcache entry for the foreign table */
 	AttInMetadata *attinmeta;	/* attribute datatype conversion metadata */
@@ -190,12 +190,12 @@ typedef struct PgFdwModifyState
 
 	/* working memory context */
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
-} PgFdwModifyState;
+} TdFdwModifyState;
 
 /*
  * Workspace for analyzing a foreign table.
  */
-typedef struct PgFdwAnalyzeState
+typedef struct TdFdwAnalyzeState
 {
 	Relation	rel;			/* relcache entry for the foreign table */
 	AttInMetadata *attinmeta;	/* attribute datatype conversion metadata */
@@ -214,7 +214,7 @@ typedef struct PgFdwAnalyzeState
 	/* working memory contexts */
 	MemoryContext anl_cxt;		/* context for per-analyze lifespan data */
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
-} PgFdwAnalyzeState;
+} TdFdwAnalyzeState;
 #endif
 /*
  * Identify the attribute where data conversion fails.
@@ -307,18 +307,18 @@ static bool ec_member_matches_foreign(PlannerInfo *root, RelOptInfo *rel,
                                       void *arg);
 static void fetch_more_data(ForeignScanState *node);
 static void close_cursor(PGconn *conn, unsigned int cursor_number);
-static void prepare_foreign_modify(PgFdwModifyState *fmstate);
-static const char **convert_prep_stmt_params(PgFdwModifyState *fmstate,
+static void prepare_foreign_modify(TdFdwModifyState *fmstate);
+static const char **convert_prep_stmt_params(TdFdwModifyState *fmstate,
         ItemPointer tupleid,
         TupleTableSlot *slot);
-static void store_returning_result(PgFdwModifyState *fmstate,
+static void store_returning_result(TdFdwModifyState *fmstate,
                                    TupleTableSlot *slot, PGresult *res);
 static int treasuredataAcquireSampleRowsFunc(Relation relation, int elevel,
         HeapTuple *rows, int targrows,
         double *totalrows,
         double *totaldeadrows);
 static void analyze_row_processor(PGresult *res, int row,
-                                  PgFdwAnalyzeState *astate);
+                                  TdFdwAnalyzeState *astate);
 #endif
 static HeapTuple make_tuple_from_result_row(void *td_client,
         Relation rel,
@@ -875,17 +875,10 @@ treasuredataEndForeignScan(ForeignScanState *node)
 	/* if fsstate is NULL, we are in EXPLAIN; nothing to do */
 	if (fsstate == NULL)
 		return;
-#if 0
-	/* Close the cursor if open, to prevent accumulation of cursors */
-	if (fsstate->cursor_exists)
-		close_cursor(fsstate->conn, fsstate->cursor_number);
 
-	/* Release remote connection */
-	ReleaseConnection(fsstate->conn);
-	fsstate->conn = NULL;
+    fsstate->td_client = NULL;
 
 	/* MemoryContexts will be deleted automatically. */
-#endif
 }
 
 #if 0
@@ -1062,7 +1055,7 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
                                int subplan_index,
                                int eflags)
 {
-	PgFdwModifyState *fmstate;
+	TdFdwModifyState *fmstate;
 	EState	   *estate = mtstate->ps.state;
 	CmdType		operation = mtstate->operation;
 	Relation	rel = resultRelInfo->ri_RelationDesc;
@@ -1083,8 +1076,8 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
 		return;
 
-	/* Begin constructing PgFdwModifyState. */
-	fmstate = (PgFdwModifyState *) palloc0(sizeof(PgFdwModifyState));
+	/* Begin constructing TdFdwModifyState. */
+	fmstate = (TdFdwModifyState *) palloc0(sizeof(TdFdwModifyState));
 	fmstate->rel = rel;
 
 	/*
@@ -1176,7 +1169,7 @@ treasuredataExecForeignInsert(EState *estate,
                               TupleTableSlot *slot,
                               TupleTableSlot *planSlot)
 {
-	PgFdwModifyState *fmstate = (PgFdwModifyState *) resultRelInfo->ri_FdwState;
+	TdFdwModifyState *fmstate = (TdFdwModifyState *) resultRelInfo->ri_FdwState;
 	const char **p_values;
 	PGresult   *res;
 	int			n_rows;
@@ -1234,7 +1227,7 @@ treasuredataExecForeignUpdate(EState *estate,
                               TupleTableSlot *slot,
                               TupleTableSlot *planSlot)
 {
-	PgFdwModifyState *fmstate = (PgFdwModifyState *) resultRelInfo->ri_FdwState;
+	TdFdwModifyState *fmstate = (TdFdwModifyState *) resultRelInfo->ri_FdwState;
 	Datum		datum;
 	bool		isNull;
 	const char **p_values;
@@ -1304,7 +1297,7 @@ treasuredataExecForeignDelete(EState *estate,
                               TupleTableSlot *slot,
                               TupleTableSlot *planSlot)
 {
-	PgFdwModifyState *fmstate = (PgFdwModifyState *) resultRelInfo->ri_FdwState;
+	TdFdwModifyState *fmstate = (TdFdwModifyState *) resultRelInfo->ri_FdwState;
 	Datum		datum;
 	bool		isNull;
 	const char **p_values;
@@ -1372,7 +1365,7 @@ static void
 treasuredataEndForeignModify(EState *estate,
                              ResultRelInfo *resultRelInfo)
 {
-	PgFdwModifyState *fmstate = (PgFdwModifyState *) resultRelInfo->ri_FdwState;
+	TdFdwModifyState *fmstate = (TdFdwModifyState *) resultRelInfo->ri_FdwState;
 
 	/* If fmstate is NULL, we are in EXPLAIN; nothing to do */
 	if (fmstate == NULL)
@@ -1648,7 +1641,7 @@ reset_transmission_modes(int nestlevel)
  *		Establish a prepared statement for execution of INSERT/UPDATE/DELETE
  */
 static void
-prepare_foreign_modify(PgFdwModifyState *fmstate)
+prepare_foreign_modify(TdFdwModifyState *fmstate)
 {
 	char		prep_name[NAMEDATALEN];
 	char	   *p_name;
@@ -1693,7 +1686,7 @@ prepare_foreign_modify(PgFdwModifyState *fmstate)
  * Data is constructed in temp_cxt; caller should reset that after use.
  */
 static const char **
-convert_prep_stmt_params(PgFdwModifyState *fmstate,
+convert_prep_stmt_params(TdFdwModifyState *fmstate,
                          ItemPointer tupleid,
                          TupleTableSlot *slot)
 {
@@ -1755,7 +1748,7 @@ convert_prep_stmt_params(PgFdwModifyState *fmstate,
  * have PG_TRY blocks to ensure this happens.
  */
 static void
-store_returning_result(PgFdwModifyState *fmstate,
+store_returning_result(TdFdwModifyState *fmstate,
                        TupleTableSlot *slot, PGresult *res)
 {
 	PG_TRY();
@@ -1869,7 +1862,7 @@ treasuredataAcquireSampleRowsFunc(Relation relation, int elevel,
                                   double *totalrows,
                                   double *totaldeadrows)
 {
-	PgFdwAnalyzeState astate;
+	TdFdwAnalyzeState astate;
 	ForeignTable *table;
 	ForeignServer *server;
 	UserMapping *user;
@@ -2001,7 +1994,7 @@ treasuredataAcquireSampleRowsFunc(Relation relation, int elevel,
  *	 - Subsequently, replace already-sampled tuples randomly.
  */
 static void
-analyze_row_processor(PGresult *res, int row, PgFdwAnalyzeState *astate)
+analyze_row_processor(PGresult *res, int row, TdFdwAnalyzeState *astate)
 {
 	int			targrows = astate->targrows;
 	int			pos;			/* array index to store tuple in */
