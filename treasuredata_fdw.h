@@ -1,17 +1,17 @@
 /*-------------------------------------------------------------------------
  *
- * postgres_fdw.h
- *		  Foreign-data wrapper for remote PostgreSQL servers
+ * treasuredata_fdw.h
+ *		  Foreign-data wrapper for Treasure Data
  *
- * Portions Copyright (c) 2012-2015, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016, Mitsunori Komatsu
  *
  * IDENTIFICATION
- *		  contrib/postgres_fdw/postgres_fdw.h
+ *		  treasuredata_fdw.h
  *
  *-------------------------------------------------------------------------
  */
-#ifndef POSTGRES_FDW_H
-#define POSTGRES_FDW_H
+#ifndef TREASUREDATA_FDW_H
+#define TREASUREDATA_FDW_H
 
 #include "foreign/foreign.h"
 #include "lib/stringinfo.h"
@@ -29,25 +29,10 @@ typedef struct TdFdwOption
     char *table;         /* target table name */
 }   TdFdwOption;
 
-#if 0
-/* in postgres_fdw.c */
+/* in treasuredata_fdw.c */
 extern int	set_transmission_modes(void);
 extern void reset_transmission_modes(int nestlevel);
 
-/* in connection.c */
-extern PGconn *GetConnection(ForeignServer *server, UserMapping *user,
-			  bool will_prep_stmt);
-extern void ReleaseConnection(PGconn *conn);
-extern unsigned int GetCursorNumber(PGconn *conn);
-extern unsigned int GetPrepStmtNumber(PGconn *conn);
-extern void pgfdw_report_error(int elevel, PGresult *res, PGconn *conn,
-				   bool clear, const char *sql);
-
-/* in option.c */
-extern int ExtractConnectionOptions(List *defelems,
-						 const char **keywords,
-						 const char **values);
-#endif
 extern void ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option);
 
 /* in deparse.c */
@@ -70,7 +55,6 @@ extern void appendWhereClause(StringInfo buf,
 				  List *exprs,
 				  bool is_first,
 				  List **params);
-#if 0
 extern void deparseInsertSql(StringInfo buf, PlannerInfo *root,
 				 Index rtindex, Relation rel,
 				 List *targetAttrs, bool doNothing, List *returningList,
@@ -86,7 +70,6 @@ extern void deparseDeleteSql(StringInfo buf, PlannerInfo *root,
 extern void deparseAnalyzeSizeSql(StringInfo buf, Relation rel);
 extern void deparseAnalyzeSql(StringInfo buf, Relation rel,
 				  List **retrieved_attrs);
-#endif
 extern void deparseStringLiteral(StringInfo buf, const char *val);
 
-#endif   /* POSTGRES_FDW_H */
+#endif   /* TREASUREDATA_FDW_H */

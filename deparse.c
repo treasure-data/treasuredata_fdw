@@ -1,33 +1,12 @@
 /*-------------------------------------------------------------------------
  *
  * deparse.c
- *		  Query deparser for postgres_fdw
+ *        Query deparser for treasuredata_fdw
  *
- * This file includes functions that examine query WHERE clauses to see
- * whether they're safe to send to the remote server for execution, as
- * well as functions to construct the query text to be sent.  The latter
- * functionality is annoyingly duplicative of ruleutils.c, but there are
- * enough special considerations that it seems best to keep this separate.
- * One saving grace is that we only need deparse logic for node types that
- * we consider safe to send.
- *
- * We assume that the remote session's search_path is exactly "pg_catalog",
- * and thus we need schema-qualify all and only names outside pg_catalog.
- *
- * We do not consider that it is ever safe to send COLLATE expressions to
- * the remote server: it might not have the same collation names we do.
- * (Later we might consider it safe to send COLLATE "C", but even that would
- * fail on old remote servers.)  An expression is considered safe to send
- * only if all operator/function input collations used in it are traceable to
- * Var(s) of the foreign table.  That implies that if the remote server gets
- * a different answer than we do, the foreign table's columns are not marked
- * with collations that match the remote table's columns, which we can
- * consider to be user error.
- *
- * Portions Copyright (c) 2012-2015, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016, Mitsunori Komatsu
  *
  * IDENTIFICATION
- *		  contrib/postgres_fdw/deparse.c
+ *        deparse.c
  *
  *-------------------------------------------------------------------------
  */
@@ -1204,7 +1183,6 @@ deparseRelation(StringInfo buf, Relation rel)
 	appendStringInfo(buf, "%s.%s",
 					 quote_identifier(nspname), quote_identifier(relname));
 #endif
-
 	appendStringInfo(buf, "%s", quote_identifier(relname));
 }
 
@@ -1360,14 +1338,18 @@ deparseConst(Const *node, deparse_expr_cxt *context)
 	bool		typIsVarlena;
 	char	   *extval;
 	bool		isfloat = false;
+#if 0
 	bool		needlabel;
+#endif
 
 	if (node->constisnull)
 	{
 		appendStringInfoString(buf, "NULL");
+#if 0
 		appendStringInfo(buf, "::%s",
 						 format_type_with_typemod(node->consttype,
 												  node->consttypmod));
+#endif
 		return;
 	}
 
@@ -1416,7 +1398,7 @@ deparseConst(Const *node, deparse_expr_cxt *context)
 			deparseStringLiteral(buf, extval);
 			break;
 	}
-
+#if 0
 	/*
 	 * Append ::typename unless the constant will be implicitly typed as the
 	 * right type when it is read in.
@@ -1442,6 +1424,7 @@ deparseConst(Const *node, deparse_expr_cxt *context)
 		appendStringInfo(buf, "::%s",
 						 format_type_with_typemod(node->consttype,
 												  node->consttypmod));
+#endif
 }
 
 /*
@@ -1558,15 +1541,19 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 	 */
 	if (node->funcformat == COERCE_EXPLICIT_CAST)
 	{
+#if 0
 		Oid			rettype = node->funcresulttype;
+#endif
 		int32		coercedTypmod;
 
 		/* Get the typmod if this is a length-coercion function */
 		(void) exprIsLengthCoercion((Node *) node, &coercedTypmod);
 
 		deparseExpr((Expr *) linitial(node->args), context);
+#if 0
 		appendStringInfo(buf, "::%s",
 						 format_type_with_typemod(rettype, coercedTypmod));
+#endif
 		return;
 	}
 
@@ -1684,8 +1671,17 @@ deparseOperatorName(StringInfo buf, Form_pg_operator opform)
 	}
 	else
 	{
-		/* Just print operator name. */
-		appendStringInfoString(buf, opname);
+        if (strcmp(opname, "~~") == 0)
+        {
+            appendStringInfoString(buf, "LIKE");
+        }
+        else if (strcmp(opname, "!~~") == 0)
+        {
+            appendStringInfoString(buf, "NOT LIKE");
+        }
+        else {
+            appendStringInfoString(buf, opname);
+        }
 	}
 }
 
@@ -1759,10 +1755,12 @@ static void
 deparseRelabelType(RelabelType *node, deparse_expr_cxt *context)
 {
 	deparseExpr(node->arg, context);
+#if 0
 	if (node->relabelformat != COERCE_IMPLICIT_CAST)
 		appendStringInfo(context->buf, "::%s",
 						 format_type_with_typemod(node->resulttype,
 												  node->resulttypmod));
+#endif
 }
 
 /*
@@ -1855,11 +1853,12 @@ deparseArrayExpr(ArrayExpr *node, deparse_expr_cxt *context)
 		first = false;
 	}
 	appendStringInfoChar(buf, ']');
-
+#if 0
 	/* If the array is empty, we need an explicit cast to the array type. */
 	if (node->elements == NIL)
 		appendStringInfo(buf, "::%s",
 						 format_type_with_typemod(node->array_typeid, -1));
+#endif
 }
 
 /*
@@ -1875,9 +1874,12 @@ printRemoteParam(int paramindex, Oid paramtype, int32 paramtypmod,
 				 deparse_expr_cxt *context)
 {
 	StringInfo	buf = context->buf;
+#if 0
 	char	   *ptypename = format_type_with_typemod(paramtype, paramtypmod);
 
-	appendStringInfo(buf, "$%d::%s", paramindex, ptypename);
+     appendStringInfo(buf, "$%d::%s", paramindex, ptypename);
+#endif
+	appendStringInfo(buf, "$%d", paramindex);
 }
 
 /*

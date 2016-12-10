@@ -1,3 +1,15 @@
+/*-------------------------------------------------------------------------
+ *
+ * bridge.c
+ *        Bridge between C and Rust
+ *
+ * Portions Copyright (c) 2016, Mitsunori Komatsu
+ *
+ * IDENTIFICATION
+ *        bridge.c
+ *
+ *-------------------------------------------------------------------------
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>

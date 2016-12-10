@@ -3,20 +3,10 @@
  * shippable.c
  *	  Determine which database objects are shippable to a remote server.
  *
- * We need to determine whether particular functions, operators, and indeed
- * data types are shippable to a remote server for execution --- that is,
- * do they exist and have the same behavior remotely as they do locally?
- * Built-in objects are generally considered shippable.  Other objects can
- * be shipped if they are white-listed by the user.
- *
- * Note: there are additional filter rules that prevent shipping mutable
- * functions or functions using nonportable collations.  Those considerations
- * need not be accounted for here.
- *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016, Mitsunori Komatsu
  *
  * IDENTIFICATION
- *	  contrib/postgres_fdw/shippable.c
+ *	  shippable.c
  *
  *-------------------------------------------------------------------------
  */

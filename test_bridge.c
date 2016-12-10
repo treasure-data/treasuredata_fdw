@@ -1,3 +1,15 @@
+/*-------------------------------------------------------------------------
+ *
+ * test_bridge.c
+ *        Test program for bridge.c
+ *
+ * Portions Copyright (c) 2016, Mitsunori Komatsu
+ *
+ * IDENTIFICATION
+ *        test_bridge.c
+ *
+ *-------------------------------------------------------------------------
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
