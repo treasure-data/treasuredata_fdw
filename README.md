@@ -45,7 +45,7 @@ SERVER treasuredata_server OPTIONS (
 
 SELECT code, count(1)
 FROM sample_datasets
-WHERE time BETWEEN 1412121600 AND 1414800000  -- For time index pushdown in Treasure Data (TODO)
+WHERE time BETWEEN 1412121600 AND 1414800000
 GROUP BY code;
 
  code | count
