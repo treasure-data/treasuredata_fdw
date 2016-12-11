@@ -205,3 +205,11 @@ pub extern fn fetch_result_row(
         }
     }
 }
+
+#[no_mangle]
+pub extern fn release_resource(td_query_state: *mut TdQueryState) {
+    unsafe {
+        Box::from_raw(td_query_state);
+    }
+}
+

@@ -876,6 +876,8 @@ treasuredataEndForeignScan(ForeignScanState *node)
 	if (fsstate == NULL)
 		return;
 
+    releaseResource(fsstate->td_client);
+
     fsstate->td_client = NULL;
 
 	/* MemoryContexts will be deleted automatically. */

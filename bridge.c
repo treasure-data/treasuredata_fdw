@@ -77,6 +77,8 @@ extern bool fetch_result_row(
     void (*error_log)(size_t, const char*)
 );
 
+extern void release_resource(void *td_query_state);
+
 void* issueQuery(
     const char* apikey,
     const char* endpoint,
@@ -123,6 +125,11 @@ int fetchResultRow(void* td_query_state, int natts, char** values)
 	}
 
 	return 1;
+}
+
+void releaseResource(void *td_query_state)
+{
+    release_resource(td_query_state);
 }
 
 static int add_nil(fetch_result_context* context)

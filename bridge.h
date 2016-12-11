@@ -22,5 +22,7 @@ extern int fetchResultRow(
     void *td_query_state, int natts, char **values
 );
 
+extern void releaseResource(void *td_query_state);
+
 #endif   /* TREASUREDATA_FDW_BRIDGE_H */
 
