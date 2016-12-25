@@ -18,8 +18,6 @@
 #include "nodes/relation.h"
 #include "utils/relcache.h"
 
-#include "libpq-fe.h"
-
 typedef struct TdFdwOption
 {
 	char *endpoint;      /* endpoint */
