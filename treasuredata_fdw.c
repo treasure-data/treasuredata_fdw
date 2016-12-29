@@ -609,17 +609,17 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 			 */
 			switch (rc->strength)
 			{
-			case LCS_NONE:
-				/* No locking needed */
-				break;
-			case LCS_FORKEYSHARE:
-			case LCS_FORSHARE:
-				elog(ERROR, "SELECT FOR SHARE isn't supported");
-				break;
-			case LCS_FORNOKEYUPDATE:
-			case LCS_FORUPDATE:
-				elog(ERROR, "SELECT FOR UPDATE isn't supported");
-				break;
+				case LCS_NONE:
+					/* No locking needed */
+					break;
+				case LCS_FORKEYSHARE:
+				case LCS_FORSHARE:
+					elog(ERROR, "SELECT FOR SHARE isn't supported");
+					break;
+				case LCS_FORNOKEYUPDATE:
+				case LCS_FORUPDATE:
+					elog(ERROR, "SELECT FOR UPDATE isn't supported");
+					break;
 			}
 		}
 	}
@@ -876,9 +876,9 @@ treasuredataEndForeignScan(ForeignScanState *node)
 	if (fsstate == NULL)
 		return;
 
-    releaseResource(fsstate->td_client);
+	releaseResource(fsstate->td_client);
 
-    fsstate->td_client = NULL;
+	fsstate->td_client = NULL;
 
 	/* MemoryContexts will be deleted automatically. */
 }
@@ -1014,24 +1014,24 @@ treasuredataPlanForeignModify(PlannerInfo *root,
 	 */
 	switch (operation)
 	{
-	case CMD_INSERT:
-		deparseInsertSql(&sql, root, resultRelation, rel,
-		                 targetAttrs, doNothing, returningList,
-		                 &retrieved_attrs);
-		break;
-	case CMD_UPDATE:
-		deparseUpdateSql(&sql, root, resultRelation, rel,
-		                 targetAttrs, returningList,
-		                 &retrieved_attrs);
-		break;
-	case CMD_DELETE:
-		deparseDeleteSql(&sql, root, resultRelation, rel,
-		                 returningList,
-		                 &retrieved_attrs);
-		break;
-	default:
-		elog(ERROR, "unexpected operation: %d", (int) operation);
-		break;
+		case CMD_INSERT:
+			deparseInsertSql(&sql, root, resultRelation, rel,
+			                 targetAttrs, doNothing, returningList,
+			                 &retrieved_attrs);
+			break;
+		case CMD_UPDATE:
+			deparseUpdateSql(&sql, root, resultRelation, rel,
+			                 targetAttrs, returningList,
+			                 &retrieved_attrs);
+			break;
+		case CMD_DELETE:
+			deparseDeleteSql(&sql, root, resultRelation, rel,
+			                 returningList,
+			                 &retrieved_attrs);
+			break;
+		default:
+			elog(ERROR, "unexpected operation: %d", (int) operation);
+			break;
 	}
 
 	heap_close(rel, NoLock);
