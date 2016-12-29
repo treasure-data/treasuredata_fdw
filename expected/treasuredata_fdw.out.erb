@@ -1,0 +1,58 @@
+\c postgres <%= @pg_role %>
+CREATE EXTENSION treasuredata_fdw;
+CREATE SERVER treasuredata_server FOREIGN DATA WRAPPER treasuredata_fdw;
+CREATE FOREIGN TABLE td_www_access (
+    time integer,
+    code integer,
+    size integer,
+    method varchar
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'sample_datasets',
+    query_engine '<%= @query_engine %>',
+    table 'www_access'
+);
+SELECT * FROM td_www_access ORDER BY TIME LIMIT 5;
+    time    | code | size | method 
+------------+------+------+--------
+ 1412320845 |  200 |   62 | GET
+ 1412320861 |  200 |  115 | GET
+ 1412320878 |  200 |   75 | GET
+ 1412320895 |  200 |   50 | GET
+ 1412320911 |  200 |   93 | GET
+(5 rows)
+
+SELECT COUNT(1) FROM td_www_access;
+ count 
+-------
+  5000
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE SUBSTR(method, 1, 3) = 'POS';
+ count 
+-------
+   376
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE method LIKE '%ET' AND code = 200;
+ count 
+-------
+  4605
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE method NOT LIKE '%ET' AND code NOT IN (404);
+ count 
+-------
+   376
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE time in (SELECT MIN(time) FROM td_www_access);
+ count 
+-------
+     1
+(1 row)
+
+DROP FOREIGN TABLE td_www_access;
+DROP SERVER treasuredata_server;
+DROP EXTENSION treasuredata_fdw CASCADE;
