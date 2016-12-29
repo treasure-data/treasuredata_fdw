@@ -1,0 +1,47 @@
+#!/usr/bin/env ruby
+
+require 'erb'
+require 'optparse'
+
+class Converter
+  def initialize(apikey, query_engine, pg_role)
+    @apikey = apikey
+    @query_engine = query_engine
+    @pg_role = pg_role
+  end
+
+  def convert(temp_path, out_path)
+    temp = File.read(temp_path)
+    File.write(out_path, ERB.new(temp).result(binding))
+  end
+end
+
+if __FILE__ == $0
+  options = {:role => 'postgres'}
+  op = OptionParser.new do |opts|
+    opts.banner = "Usage: #{$0} apikey query_engine [options]"
+
+    opts.on("-r", "--role ROLE", "Role in PostgreSQL") do |v|
+      options[:role] = v
+    end
+  end
+  op.parse!
+
+  unless ARGV.size >= 2
+    puts op
+    exit 1
+  end
+
+  apikey = ARGV.shift
+  query_engine = ARGV.shift
+
+  unless %w|hive presto|.include?(query_engine)
+    puts "query_engine should be either 'hive' or 'presto'"
+    puts op
+    exit 1
+  end
+
+  conv = Converter.new(apikey, query_engine, options[:role])
+  conv.convert('sql/treasuredata_fdw.sql.erb', 'sql/treasuredata_fdw.sql')
+  conv.convert('expected/treasuredata_fdw.out.erb', 'expected/treasuredata_fdw.out')
+end
