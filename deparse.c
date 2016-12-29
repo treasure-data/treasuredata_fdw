@@ -1951,6 +1951,7 @@ char allowed_functions[][16] = {
     "rpad",
     "rtrim",
     "substr",
+    "substring",
     "trim",
     "upper",
     ""
@@ -1964,6 +1965,7 @@ isAllowedFunction(FuncExpr *node)
 	Form_pg_proc procform;
 	char *allowed_funcname;
 	const char *proname;
+    bool is_found = false;
 
 	if (node->funcformat == COERCE_IMPLICIT_CAST)
     {
@@ -1987,24 +1989,31 @@ isAllowedFunction(FuncExpr *node)
 	if (procform->pronamespace != PG_CATALOG_NAMESPACE)
 	{
         elog(DEBUG1, "This function isn't in pg_catalog");
-        return false;
 	}
-
-	proname = NameStr(procform->proname);
-
-    for (i = 0; ;i++)
+    else
     {
-        allowed_funcname = allowed_functions[i];
-        if (strlen(allowed_funcname) == 0) {
-            break;
+        proname = NameStr(procform->proname);
+
+        for (i = 0; ;i++)
+        {
+            allowed_funcname = allowed_functions[i];
+            if (strlen(allowed_funcname) == 0) {
+                break;
+            }
+
+            if (strcmp(proname, allowed_funcname) == 0) {
+                is_found = true;
+                break;
+            }
         }
 
-        if (strcmp(proname, allowed_funcname) == 0) {
+        if (is_found)
             elog(DEBUG1, "This function works on Treasure Data: %s", proname);
-            return true;
-        }
+        else
+            elog(DEBUG1, "This function doesn't work on Treasure Data: %s", proname);
     }
-    elog(DEBUG1, "This function doesn't work on Treasure Data: %s", proname);
+    
+	ReleaseSysCache(proctup);
 
-    return false;
+    return is_found;
 }
