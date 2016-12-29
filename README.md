@@ -73,3 +73,10 @@ $ docker/build.sh
 $ docker/run.sh
 ```
 And then, follow the instructions from `run.sh`.
+
+## Regression test
+
+```
+$ ./setup_regress <your_api_key> <hive|presto>
+$ make installcheck
+```
