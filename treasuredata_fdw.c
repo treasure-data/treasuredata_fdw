@@ -82,6 +82,9 @@ typedef struct TdFdwRelationInfo
 	/* Cached catalog information. */
 	ForeignTable *table;
 	ForeignServer *server;
+
+	/* Query engine type */
+	QueryEngineType query_engine_type;
 } TdFdwRelationInfo;
 
 /*
@@ -394,6 +397,14 @@ treasuredataGetForeignRelSize(PlannerInfo *root,
 	/* Look up foreign-table catalog info. */
 	fpinfo->table = GetForeignTable(foreigntableid);
 	fpinfo->server = GetForeignServer(fpinfo->table->serverid);
+	{
+		TdFdwOption fdw_option;
+		ExtractFdwOptions(fpinfo->table, &fdw_option);
+		if (strcmp(fdw_option.query_engine, "presto") == 0)
+			fpinfo->query_engine_type = QUERY_ENGINE_PRESTO;
+		else
+			fpinfo->query_engine_type = QUERY_ENGINE_HIVE;
+	}
 
 	fpinfo->fdw_startup_cost = DEFAULT_FDW_STARTUP_COST;
 	fpinfo->fdw_tuple_cost = DEFAULT_FDW_TUPLE_COST;
@@ -570,10 +581,10 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 	 */
 	initStringInfo(&sql);
 	deparseSelectSql(&sql, root, baserel, fpinfo->attrs_used,
-	                 &retrieved_attrs);
+	                 &retrieved_attrs, fpinfo->query_engine_type);
 	if (remote_conds)
 		appendWhereClause(&sql, root, baserel, remote_conds,
-		                  true, &params_list);
+		                  true, &params_list, fpinfo->query_engine_type);
 
 	/*
 	 * Add FOR UPDATE/SHARE if appropriate.  We apply locking during the

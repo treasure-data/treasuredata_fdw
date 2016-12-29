@@ -29,6 +29,12 @@ SELECT COUNT(1) FROM td_www_access;
   5000
 (1 row)
 
+SELECT COUNT(1) FROM td_www_access WHERE time < 1412320911;
+ count 
+-------
+     4
+(1 row)
+
 SELECT COUNT(1) FROM td_www_access WHERE SUBSTR(method, 1, 3) = 'POS';
  count 
 -------
