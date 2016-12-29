@@ -120,7 +120,7 @@ static void printRemoteParam(int paramindex, Oid paramtype, int32 paramtypmod,
                              deparse_expr_cxt *context);
 static void printRemotePlaceholder(Oid paramtype, int32 paramtypmod,
                                    deparse_expr_cxt *context);
-
+static bool isAllowedFunction(FuncExpr *node);
 
 /*
  * Examine each qual clause in input_conds, and classify them into two groups,
@@ -365,6 +365,9 @@ foreign_expr_walker(Node *node,
 		else if (inner_cxt.state != FDW_COLLATE_SAFE ||
 		         fe->inputcollid != inner_cxt.collation)
 			return false;
+
+        if (!isAllowedFunction(fe))
+            return false;
 
 		/*
 		 * Detect whether node is introducing a collation not derived
@@ -1895,4 +1898,113 @@ printRemotePlaceholder(Oid paramtype, int32 paramtypmod,
 	char	   *ptypename = format_type_with_typemod(paramtype, paramtypmod);
 
 	appendStringInfo(buf, "((SELECT null::%s)::%s)", ptypename, ptypename);
+}
+
+/*
+ * This table includes function names that work on PostgreSQL and Hive/Presto
+ * on Treasure Data.
+ */
+char allowed_functions[][16] = {
+    /* Aggregation functions */
+    "avg",
+    "count",
+    "covar_pop",
+    "covar_samp",
+    "max",
+    "min",
+    "stddev_pop",
+    "stddev_samp",
+    "sum",
+    "var_pop",
+    "var_samp",
+    "variance",
+    /* Mathmatical functions */
+    "abs",
+    "acos",
+    "asin",
+    "atan",
+    "cbrt",
+    "ceil",
+    "ceiling",
+    "cos",
+    "degrees",
+    "exp",
+    "floor",
+    "ln",
+    "log",
+    "pi",
+    "power",
+    "radians",
+    "round",
+    "sign",
+    "sin",
+    "sqrt",
+    "tan",
+    /* String functions */
+    "chr",
+    "concat",
+    "length",
+    "lower",
+    "lpad",
+    "ltrim",
+    "reverse",
+    "rpad",
+    "rtrim",
+    "substr",
+    "trim",
+    "upper",
+    ""
+};
+
+static bool
+isAllowedFunction(FuncExpr *node)
+{
+    int i;
+	HeapTuple	proctup;
+	Form_pg_proc procform;
+	char *allowed_funcname;
+	const char *proname;
+
+	if (node->funcformat == COERCE_IMPLICIT_CAST)
+    {
+        elog(DEBUG1, "This function is COERCE_IMPLICIT_CAST");
+        return true;
+    }
+    else if (node->funcformat == COERCE_EXPLICIT_CAST)
+    {
+        elog(DEBUG1, "This function is COERCE_EXPLICIT_CAST");
+        return true;
+    }
+	/*
+	 * Normal function: display as proname(args).
+	 */
+	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(node->funcid));
+	if (!HeapTupleIsValid(proctup))
+		elog(ERROR, "cache lookup failed for function %u", node->funcid);
+	procform = (Form_pg_proc) GETSTRUCT(proctup);
+
+	/* Print schema name only if it's not pg_catalog */
+	if (procform->pronamespace != PG_CATALOG_NAMESPACE)
+	{
+        elog(DEBUG1, "This function isn't in pg_catalog");
+        return false;
+	}
+
+	proname = NameStr(procform->proname);
+
+    for (i = 0; ;i++)
+    {
+        allowed_funcname = allowed_functions[i];
+        if (strlen(allowed_funcname) == 0) {
+            break;
+        }
+
+        if (strcmp(proname, allowed_funcname) == 0) {
+            elog(DEBUG1, "This function works on Treasure Data: %s", proname);
+            return true;
+        }
+    }
+    elog(DEBUG1, "This function doesn't work on Treasure Data: %s", proname);
+
+    return false;
 }
