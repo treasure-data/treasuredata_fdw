@@ -22,7 +22,7 @@ test_bridge: $(RUSTLIB) bridge.c test_bridge.c
 	cc -DWITHOUT_PG -o $@ $(RUSTLIB) bridge.c test_bridge.c
 
 code-format:
-	astyle --style=bsd --indent=tab -n *.c *.h
+	astyle --style=bsd --indent=tab -SK -n *.c *.h
 
 .PHONY: all bridge_td_client_rust code-format
 

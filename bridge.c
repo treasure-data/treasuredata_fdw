@@ -129,7 +129,7 @@ int fetchResultRow(void *td_query_state, int natts, char **values)
 
 void releaseResource(void *td_query_state)
 {
-    release_resource(td_query_state);
+	release_resource(td_query_state);
 }
 
 static int add_nil(fetch_result_context *context)
