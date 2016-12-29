@@ -27,6 +27,15 @@ typedef struct TdFdwOption
 	char *table;         /* target table name */
 }   TdFdwOption;
 
+/*
+ * Query engine type
+ */
+typedef enum
+{
+	QUERY_ENGINE_HIVE,
+	QUERY_ENGINE_PRESTO
+} QueryEngineType;
+
 /* in treasuredata_fdw.c */
 extern int	set_transmission_modes(void);
 extern void reset_transmission_modes(int nestlevel);
@@ -46,13 +55,15 @@ extern void deparseSelectSql(StringInfo buf,
                              PlannerInfo *root,
                              RelOptInfo *baserel,
                              Bitmapset *attrs_used,
-                             List **retrieved_attrs);
+                             List **retrieved_attrs,
+                             QueryEngineType query_engine_type);
 extern void appendWhereClause(StringInfo buf,
                               PlannerInfo *root,
                               RelOptInfo *baserel,
                               List *exprs,
                               bool is_first,
-                              List **params);
+                              List **params,
+                              QueryEngineType query_engine_type);
 extern void deparseInsertSql(StringInfo buf, PlannerInfo *root,
                              Index rtindex, Relation rel,
                              List *targetAttrs, bool doNothing, List *returningList,

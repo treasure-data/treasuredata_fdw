@@ -70,6 +70,7 @@ typedef struct deparse_expr_cxt
 {
 	PlannerInfo *root;			/* global planner state */
 	RelOptInfo *foreignrel;		/* the foreign relation we are planning for */
+	QueryEngineType query_engine_type;  /* Query engine type */
 	StringInfo	buf;			/* output buffer to append to */
 	List	  **params_list;	/* exprs that will become remote Params */
 } deparse_expr_cxt;
@@ -92,15 +93,17 @@ static void deparseTargetList(StringInfo buf,
                               Relation rel,
                               bool is_returning,
                               Bitmapset *attrs_used,
-                              List **retrieved_attrs);
+                              List **retrieved_attrs,
+                              QueryEngineType query_engine_type);
 static void deparseReturningList(StringInfo buf, PlannerInfo *root,
                                  Index rtindex, Relation rel,
                                  bool trig_after_row,
                                  List *returningList,
                                  List **retrieved_attrs);
 static void deparseColumnRef(StringInfo buf, int varno, int varattno,
-                             PlannerInfo *root);
-static void deparseRelation(StringInfo buf, Relation rel);
+                             PlannerInfo *root, QueryEngineType query_engine_type);
+static void deparseRelation(StringInfo buf, Relation rel,
+                            QueryEngineType query_engine_type);
 static void deparseExpr(Expr *expr, deparse_expr_cxt *context);
 static void deparseVar(Var *node, deparse_expr_cxt *context);
 static void deparseConst(Const *node, deparse_expr_cxt *context);
@@ -121,6 +124,7 @@ static void printRemoteParam(int paramindex, Oid paramtype, int32 paramtypmod,
 static void printRemotePlaceholder(Oid paramtype, int32 paramtypmod,
                                    deparse_expr_cxt *context);
 static bool isAllowedFunction(FuncExpr *node);
+static char *td_quote_identifier(const char *s, QueryEngineType query_engine_type);
 
 /*
  * Examine each qual clause in input_conds, and classify them into two groups,
@@ -677,7 +681,8 @@ deparseSelectSql(StringInfo buf,
                  PlannerInfo *root,
                  RelOptInfo *baserel,
                  Bitmapset *attrs_used,
-                 List **retrieved_attrs)
+                 List **retrieved_attrs,
+                 QueryEngineType query_engine_type)
 {
 	RangeTblEntry *rte = planner_rt_fetch(baserel->relid, root);
 	Relation	rel;
@@ -693,13 +698,13 @@ deparseSelectSql(StringInfo buf,
 	 */
 	appendStringInfoString(buf, "SELECT ");
 	deparseTargetList(buf, root, baserel->relid, rel, false, attrs_used,
-	                  retrieved_attrs);
+	                  retrieved_attrs, query_engine_type);
 
 	/*
 	 * Construct FROM clause
 	 */
 	appendStringInfoString(buf, " FROM ");
-	deparseRelation(buf, rel);
+	deparseRelation(buf, rel, query_engine_type);
 
 	heap_close(rel, NoLock);
 }
@@ -719,7 +724,8 @@ deparseTargetList(StringInfo buf,
                   Relation rel,
                   bool is_returning,
                   Bitmapset *attrs_used,
-                  List **retrieved_attrs)
+                  List **retrieved_attrs,
+                  QueryEngineType query_engine_type)
 {
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	bool		have_wholerow;
@@ -751,7 +757,7 @@ deparseTargetList(StringInfo buf,
 				appendStringInfoString(buf, " RETURNING ");
 			first = false;
 
-			deparseColumnRef(buf, rtindex, i, root);
+			deparseColumnRef(buf, rtindex, i, root, query_engine_type);
 
 			*retrieved_attrs = lappend_int(*retrieved_attrs, i);
 		}
@@ -801,7 +807,8 @@ appendWhereClause(StringInfo buf,
                   RelOptInfo *baserel,
                   List *exprs,
                   bool is_first,
-                  List **params)
+                  List **params,
+                  QueryEngineType query_engine_type)
 {
 	deparse_expr_cxt context;
 	int			nestlevel;
@@ -813,6 +820,7 @@ appendWhereClause(StringInfo buf,
 	/* Set up context struct for recursion */
 	context.root = root;
 	context.foreignrel = baserel;
+	context.query_engine_type = query_engine_type;
 	context.buf = buf;
 	context.params_list = params;
 
@@ -857,7 +865,8 @@ deparseInsertSql(StringInfo buf, PlannerInfo *root,
 	ListCell   *lc;
 
 	appendStringInfoString(buf, "INSERT INTO ");
-	deparseRelation(buf, rel);
+	/* TODO: Support Hive */
+	deparseRelation(buf, rel, QUERY_ENGINE_PRESTO);
 
 	if (targetAttrs)
 	{
@@ -872,7 +881,8 @@ deparseInsertSql(StringInfo buf, PlannerInfo *root,
 				appendStringInfoString(buf, ", ");
 			first = false;
 
-			deparseColumnRef(buf, rtindex, attnum, root);
+			/* TODO: Support Hive */
+			deparseColumnRef(buf, rtindex, attnum, root, QUERY_ENGINE_PRESTO);
 		}
 
 		appendStringInfoString(buf, ") VALUES (");
@@ -920,7 +930,8 @@ deparseUpdateSql(StringInfo buf, PlannerInfo *root,
 	ListCell   *lc;
 
 	appendStringInfoString(buf, "UPDATE ");
-	deparseRelation(buf, rel);
+	/* TODO: Support Hive */
+	deparseRelation(buf, rel, QUERY_ENGINE_PRESTO);
 	appendStringInfoString(buf, " SET ");
 
 	pindex = 2;					/* ctid is always the first param */
@@ -933,7 +944,8 @@ deparseUpdateSql(StringInfo buf, PlannerInfo *root,
 			appendStringInfoString(buf, ", ");
 		first = false;
 
-		deparseColumnRef(buf, rtindex, attnum, root);
+		/* TODO: Support Hive */
+		deparseColumnRef(buf, rtindex, attnum, root, QUERY_ENGINE_PRESTO);
 		appendStringInfo(buf, " = $%d", pindex);
 		pindex++;
 	}
@@ -958,7 +970,8 @@ deparseDeleteSql(StringInfo buf, PlannerInfo *root,
                  List **retrieved_attrs)
 {
 	appendStringInfoString(buf, "DELETE FROM ");
-	deparseRelation(buf, rel);
+	/* TODO: Support Hive */
+	deparseRelation(buf, rel, QUERY_ENGINE_PRESTO);
 	appendStringInfoString(buf, " WHERE ctid = $1");
 
 	deparseReturningList(buf, root, rtindex, rel,
@@ -996,8 +1009,9 @@ deparseReturningList(StringInfo buf, PlannerInfo *root,
 	}
 
 	if (attrs_used != NULL)
+		/* TODO: Support Hive */
 		deparseTargetList(buf, root, rtindex, rel, true, attrs_used,
-		                  retrieved_attrs);
+		                  retrieved_attrs, QUERY_ENGINE_PRESTO);
 	else
 		*retrieved_attrs = NIL;
 }
@@ -1017,7 +1031,8 @@ deparseAnalyzeSizeSql(StringInfo buf, Relation rel)
 
 	/* We'll need the remote relation name as a literal. */
 	initStringInfo(&relname);
-	deparseRelation(&relname, rel);
+	/* TODO: Support Hive */
+	deparseRelation(&relname, rel, QUERY_ENGINE_PRESTO);
 
 	appendStringInfoString(buf, "SELECT pg_catalog.pg_relation_size(");
 	deparseStringLiteral(buf, relname.data);
@@ -1082,7 +1097,8 @@ deparseAnalyzeSql(StringInfo buf, Relation rel, List **retrieved_attrs)
 	 * Construct FROM clause
 	 */
 	appendStringInfoString(buf, " FROM ");
-	deparseRelation(buf, rel);
+	/* TODO: Support Hive */
+	deparseRelation(buf, rel, QUERY_ENGINE_PRESTO);
 }
 
 /*
@@ -1090,7 +1106,8 @@ deparseAnalyzeSql(StringInfo buf, Relation rel, List **retrieved_attrs)
  * If it has a column_name FDW option, use that instead of attribute name.
  */
 static void
-deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root)
+deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
+                 QueryEngineType query_engine_type)
 {
 	RangeTblEntry *rte;
 	char	   *colname = NULL;
@@ -1126,7 +1143,7 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root)
 	if (colname == NULL)
 		colname = get_relid_attribute_name(rte->relid, varattno);
 
-	appendStringInfoString(buf, quote_identifier(colname));
+	appendStringInfoString(buf, td_quote_identifier(colname, query_engine_type));
 }
 
 /*
@@ -1135,7 +1152,7 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root)
  * Similarly, schema_name FDW option overrides schema name.
  */
 static void
-deparseRelation(StringInfo buf, Relation rel)
+deparseRelation(StringInfo buf, Relation rel, QueryEngineType query_engine_type)
 {
 	ForeignTable *table;
 	const char *nspname = NULL;
@@ -1174,7 +1191,7 @@ deparseRelation(StringInfo buf, Relation rel)
 	appendStringInfo(buf, "%s.%s",
 	                 quote_identifier(nspname), quote_identifier(relname));
 #endif
-	appendStringInfo(buf, "%s", quote_identifier(relname));
+	appendStringInfo(buf, "%s", td_quote_identifier(relname, query_engine_type));
 }
 
 /*
@@ -1283,7 +1300,8 @@ deparseVar(Var *node, deparse_expr_cxt *context)
 	        node->varlevelsup == 0)
 	{
 		/* Var belongs to foreign table */
-		deparseColumnRef(buf, node->varno, node->varattno, context->root);
+		deparseColumnRef(buf, node->varno, node->varattno, context->root,
+		                 context->query_engine_type);
 	}
 	else
 	{
@@ -1558,7 +1576,7 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 
 	/* Check if need to print VARIADIC (cf. ruleutils.c) */
 	use_variadic = node->funcvariadic;
-
+#if 0
 	/* Print schema name only if it's not pg_catalog */
 	if (procform->pronamespace != PG_CATALOG_NAMESPACE)
 	{
@@ -1567,6 +1585,7 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 		schemaname = get_namespace_name(procform->pronamespace);
 		appendStringInfo(buf, "%s.", quote_identifier(schemaname));
 	}
+#endif
 
 	/* Deparse the function name ... */
 	proname = NameStr(procform->proname);
@@ -1649,7 +1668,7 @@ deparseOperatorName(StringInfo buf, Form_pg_operator opform)
 
 	/* opname is not a SQL identifier, so we should not quote it. */
 	opname = NameStr(opform->oprname);
-
+#if 0
 	/* Print schema name only if it's not pg_catalog */
 	if (opform->oprnamespace != PG_CATALOG_NAMESPACE)
 	{
@@ -1662,6 +1681,7 @@ deparseOperatorName(StringInfo buf, Form_pg_operator opform)
 	}
 	else
 	{
+#endif
 		if (strcmp(opname, "~~") == 0)
 		{
 			appendStringInfoString(buf, "LIKE");
@@ -1674,7 +1694,9 @@ deparseOperatorName(StringInfo buf, Form_pg_operator opform)
 		{
 			appendStringInfoString(buf, opname);
 		}
+#if 0
 	}
+#endif
 }
 
 /*
@@ -2020,3 +2042,29 @@ isAllowedFunction(FuncExpr *node)
 
 	return is_found;
 }
+
+static char *
+td_quote_identifier(const char *s, QueryEngineType query_engine_type)
+{
+	if (query_engine_type == QUERY_ENGINE_PRESTO)
+		return (char *) quote_identifier(s);
+
+	{
+		char       *result = palloc(strlen(s) * 2 + 3);
+		char       *r = result;
+
+		*r++ = '`';
+		while (*s)
+		{
+			if (*s == '`')
+				*r++ = *s;
+			*r++ = *s;
+			s++;
+		}
+		*r++ = '`';
+		*r++ = '\0';
+
+		return result;
+	}
+}
+

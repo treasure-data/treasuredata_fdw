@@ -211,7 +211,7 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 	ForeignDataWrapper *wrapper;
 
 	List	   *options;
-	ListCell   *cell, *prev;
+	ListCell   *cell;
 
 	server = GetForeignServer(table->serverid);
 	wrapper = GetForeignDataWrapper(server->fdwid);
@@ -227,8 +227,6 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 	fdw_option->database = NULL;
 	fdw_option->table = NULL;
 
-retry:
-	prev = NULL;
 	foreach(cell, options)
 	{
 		DefElem    *def = (DefElem *) lfirst(cell);
@@ -236,35 +234,23 @@ retry:
 		if (strcmp(def->defname, "endpoint") == 0)
 		{
 			fdw_option->endpoint = defGetString(def);
-			options = list_delete_cell(options, cell, prev);
-			goto retry;
 		}
 		else if (strcmp(def->defname, "query_engine") == 0)
 		{
 			fdw_option->query_engine = defGetString(def);
-			options = list_delete_cell(options, cell, prev);
-			goto retry;
 		}
 		else if (strcmp(def->defname, "apikey") == 0)
 		{
 			fdw_option->apikey = defGetString(def);
-			options = list_delete_cell(options, cell, prev);
-			goto retry;
 		}
 		else if (strcmp(def->defname, "database") == 0)
 		{
 			fdw_option->database = defGetString(def);
-			options = list_delete_cell(options, cell, prev);
-			goto retry;
 		}
 		else if (strcmp(def->defname, "table") == 0)
 		{
 			fdw_option->table = defGetString(def);
-			options = list_delete_cell(options, cell, prev);
-			goto retry;
 		}
-		else
-			prev = cell;
 	}
 
 	/*
