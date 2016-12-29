@@ -778,7 +778,7 @@ deparseTargetList(StringInfo buf,
 
 	/* Don't generate bad syntax if no undropped columns */
 	if (first && !is_returning)
-		appendStringInfoString(buf, "NULL");
+		appendStringInfoString(buf, "CAST(NULL AS TINYINT)");
 }
 
 /*
