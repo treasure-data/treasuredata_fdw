@@ -63,7 +63,7 @@ pub extern fn issue_query(
     let query = convert_str_from_raw_str(raw_query);
 
     log!(debug_log, "issue_query: start");
-    log!(debug_log, "issue_query: apikey={:?}", apikey);
+    log!(debug_log, "issue_query: apikey.len={:?}", apikey.len());
     log!(debug_log, "issue_query: endpoint={:?}", endpoint);
     log!(debug_log, "issue_query: query_engine={:?}", query_engine);
     log!(debug_log, "issue_query: database={:?}", database);

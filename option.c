@@ -273,10 +273,10 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 		elog(ERROR, "treasuredata_fdw: table is required for treasuredata_fdw foreign tables");
 	}
 
-	elog(DEBUG1, "treasuredata_fdw: endpoint=%s, query_engine=%s, apikey=%s, database=%s, table=%s",
+	elog(DEBUG1, "treasuredata_fdw: endpoint=%s, query_engine=%s, apikey.len=%ld, database=%s, table=%s",
 	     fdw_option->endpoint,
 	     fdw_option->query_engine,
-	     fdw_option->apikey,
+	     strlen(fdw_option->apikey),
 	     fdw_option->database,
 	     fdw_option->table);
 }
