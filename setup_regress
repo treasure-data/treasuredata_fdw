@@ -19,7 +19,7 @@ end
 if __FILE__ == $0
   options = {:role => 'postgres'}
   op = OptionParser.new do |opts|
-    opts.banner = "Usage: #{$0} apikey query_engine [options]"
+    opts.banner = "Usage: TD_TEST_APIKEY=your_td_test_apikey #{$0} query_engine [options]"
 
     opts.on("-r", "--role ROLE", "Role in PostgreSQL") do |v|
       options[:role] = v
@@ -27,13 +27,18 @@ if __FILE__ == $0
   end
   op.parse!
 
-  unless ARGV.size >= 2
+  unless ARGV.size >= 1
     puts op
     exit 1
   end
 
-  apikey = ARGV.shift
   query_engine = ARGV.shift
+
+  unless apikey = ENV['TD_TEST_APIKEY']
+    puts "Environment variable TD_TEST_APIKEY isn't set"
+    puts op
+    exit 1
+  end
 
   unless %w|hive presto|.include?(query_engine)
     puts "query_engine should be either 'hive' or 'presto'"

@@ -77,6 +77,6 @@ And then, follow the instructions from `run.sh`.
 ## Regression test
 
 ```
-$ ./setup_regress <your_api_key> <hive|presto>
+$ TD_TEST_APIKEY=<your_api_key> ./setup_regress <hive|presto>
 $ make installcheck
 ```
