@@ -1,0 +1,26 @@
+addons:
+  postgresql: "9.5"
+  apt:
+    packages:
+      - curl
+      - wget
+      - ca-certificates
+      - build-essential
+      - postgresql-9.5
+      - postgresql-contrib-9.5
+      - postgresql-server-dev-9.5
+
+language: c
+
+cache: cargo
+
+services:
+  - postgresql
+
+before_install: curl -sSf https://static.rust-lang.org/rustup.sh | sudo sh
+
+install: make && sudo make install
+
+script:
+  - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress presto && make installcheck; fi'
+  - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress hive && make installcheck; fi'
