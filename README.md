@@ -1,4 +1,5 @@
 # treasuredata_fdw
+[<img src="https://travis-ci.org/komamitsu/treasuredata_fdw.svg?branch=master"/>](https://travis-ci.org/komamitsu/treasuredata_fdw)
 
 PostgreSQL Foreign Data Wrapper for Treasure Data
 
