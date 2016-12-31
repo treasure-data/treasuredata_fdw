@@ -811,7 +811,6 @@ appendWhereClause(StringInfo buf,
                   QueryEngineType query_engine_type)
 {
 	deparse_expr_cxt context;
-	int			nestlevel;
 	ListCell   *lc;
 
 	if (params)
@@ -823,9 +822,6 @@ appendWhereClause(StringInfo buf,
 	context.query_engine_type = query_engine_type;
 	context.buf = buf;
 	context.params_list = params;
-
-	/* Make sure any constants in the exprs are printed portably */
-	nestlevel = set_transmission_modes();
 
 	foreach(lc, exprs)
 	{
@@ -843,8 +839,6 @@ appendWhereClause(StringInfo buf,
 
 		is_first = false;
 	}
-
-	reset_transmission_modes(nestlevel);
 }
 
 /*
@@ -1168,12 +1162,6 @@ deparseRelation(StringInfo buf, Relation rel, QueryEngineType query_engine_type)
 	foreach(lc, table->options)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
-#if 0
-		if (strcmp(def->defname, "schema_name") == 0)
-			nspname = defGetString(def);
-		else if (strcmp(def->defname, "table_name") == 0)
-			relname = defGetString(def);
-#endif
 		if (strcmp(def->defname, "table") == 0)
 			relname = defGetString(def);
 	}
@@ -1187,10 +1175,6 @@ deparseRelation(StringInfo buf, Relation rel, QueryEngineType query_engine_type)
 	if (relname == NULL)
 		relname = RelationGetRelationName(rel);
 
-#if 0
-	appendStringInfo(buf, "%s.%s",
-	                 quote_identifier(nspname), quote_identifier(relname));
-#endif
 	appendStringInfo(buf, "%s", td_quote_identifier(relname, query_engine_type));
 }
 
@@ -1576,16 +1560,6 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 
 	/* Check if need to print VARIADIC (cf. ruleutils.c) */
 	use_variadic = node->funcvariadic;
-#if 0
-	/* Print schema name only if it's not pg_catalog */
-	if (procform->pronamespace != PG_CATALOG_NAMESPACE)
-	{
-		const char *schemaname;
-
-		schemaname = get_namespace_name(procform->pronamespace);
-		appendStringInfo(buf, "%s.", quote_identifier(schemaname));
-	}
-#endif
 
 	/* Deparse the function name ... */
 	proname = NameStr(procform->proname);
@@ -1668,20 +1642,6 @@ deparseOperatorName(StringInfo buf, Form_pg_operator opform)
 
 	/* opname is not a SQL identifier, so we should not quote it. */
 	opname = NameStr(opform->oprname);
-#if 0
-	/* Print schema name only if it's not pg_catalog */
-	if (opform->oprnamespace != PG_CATALOG_NAMESPACE)
-	{
-		const char *opnspname;
-
-		opnspname = get_namespace_name(opform->oprnamespace);
-		/* Print fully qualified operator name. */
-		appendStringInfo(buf, "OPERATOR(%s.%s)",
-		                 quote_identifier(opnspname), opname);
-	}
-	else
-	{
-#endif
 		if (strcmp(opname, "~~") == 0)
 		{
 			appendStringInfoString(buf, "LIKE");
@@ -1694,9 +1654,6 @@ deparseOperatorName(StringInfo buf, Form_pg_operator opform)
 		{
 			appendStringInfoString(buf, opname);
 		}
-#if 0
-	}
-#endif
 }
 
 /*

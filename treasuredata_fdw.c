@@ -38,7 +38,6 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
-#include "utils/sampling.h"
 
 PG_MODULE_MAGIC;
 
@@ -425,8 +424,13 @@ treasuredataGetForeignRelSize(PlannerInfo *root,
 	 * columns used in them.  Doesn't seem worth detecting that case though.)
 	 */
 	fpinfo->attrs_used = NULL;
+#if PG_VERSION_NUM >= 90600
+	pull_varattnos((Node *) baserel->reltarget->exprs, baserel->relid,
+	               &fpinfo->attrs_used);
+#else
 	pull_varattnos((Node *) baserel->reltargetlist, baserel->relid,
 	               &fpinfo->attrs_used);
+#endif
 	foreach(lc, fpinfo->local_conds)
 	{
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
@@ -464,7 +468,13 @@ treasuredataGetForeignRelSize(PlannerInfo *root,
 	{
 		baserel->pages = 10;
 		baserel->tuples =
+#if PG_VERSION_NUM >= 90600
+		    (10 * BLCKSZ) / (baserel->reltarget->width + MAXALIGN(SizeofHeapTupleHeader));
+#elif PG_VERSION_NUM >= 90500
 		    (10 * BLCKSZ) / (baserel->width + MAXALIGN(SizeofHeapTupleHeader));
+#else
+		    (10 * BLCKSZ) / (baserel->width + sizeof(HeapTupleHeaderData));
+#endif
 	}
 
 	/* Estimate baserel size as best we can with local statistics. */
@@ -496,12 +506,17 @@ treasuredataGetForeignPaths(PlannerInfo *root,
 	 * to estimate cost and size of this path.
 	 */
 	path = create_foreignscan_path(root, baserel,
+#if PG_VERSION_NUM >= 90600
+                                   NULL,      /* default pathtarget */
+#endif
 	                               fpinfo->rows,
 	                               fpinfo->startup_cost,
 	                               fpinfo->total_cost,
 	                               NIL, /* no pathkeys */
 	                               NULL,		/* no outer rel either */
+#if PG_VERSION_NUM >= 90500
 	                               NULL,		/* no extra plan */
+#endif
 	                               NIL);		/* no fdw_private list */
 	add_path(baserel, (Path *) path);
 }
@@ -602,6 +617,7 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 	{
 		elog(ERROR, "SELECT FOR UPDATE isn't supported");
 	}
+#if PG_VERSION_NUM >= 90500
 	else
 	{
 		PlanRowMark *rc = get_plan_rowmark(root->rowMarks, baserel->relid);
@@ -634,6 +650,7 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 			}
 		}
 	}
+#endif
 
 	/*
 	 * Build the fdw_private list that will be available to the executor.
@@ -652,14 +669,17 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 	 * field of the finished plan node; we can't keep them in private state
 	 * because then they wouldn't be subject to later planner processing.
 	 */
-	return make_foreignscan(tlist,
-	                        local_exprs,
-	                        scan_relid,
-	                        params_list,
-	                        fdw_private,
-	                        NIL,	/* no custom tlist */
-	                        remote_exprs,
-	                        outer_plan);
+	return make_foreignscan(tlist
+	                        , local_exprs
+	                        , scan_relid
+	                        , params_list
+	                        , fdw_private
+#if PG_VERSION_NUM >= 90500
+	                        , NIL	/* no custom tlist */
+	                        , remote_exprs
+	                        , outer_plan
+#endif
+                            );
 }
 
 /*
@@ -672,10 +692,6 @@ treasuredataBeginForeignScan(ForeignScanState *node, int eflags)
 	ForeignScan *fsplan = (ForeignScan *) node->ss.ps.plan;
 	EState	   *estate = node->ss.ps.state;
 	TdFdwScanState *fsstate;
-	RangeTblEntry *rte;
-	Oid			userid;
-	ForeignTable *table;
-	ForeignServer *server;
 	int			numParams;
 	int			i;
 	ListCell   *lc;
@@ -692,21 +708,9 @@ treasuredataBeginForeignScan(ForeignScanState *node, int eflags)
 	fsstate = (TdFdwScanState *) palloc0(sizeof(TdFdwScanState));
 	node->fdw_state = (void *) fsstate;
 
-	/*
-	 * Identify which user to do the remote access as.  This should match what
-	 * ExecCheckRTEPerms() does.
-	 */
-	rte = rt_fetch(fsplan->scan.scanrelid, estate->es_range_table);
-	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
-
 	/* Get info about foreign table. */
 	fsstate->rel = node->ss.ss_currentRelation;
-	table = GetForeignTable(RelationGetRelid(fsstate->rel));
-	server = GetForeignServer(table->serverid);
 
-	/*
-	 * TODO: Support multiple requests
-	 */
 	fsstate->td_client = NULL;
 
 	/* Get private info created by planner functions. */
@@ -1523,7 +1527,11 @@ estimate_path_cost_size(PlannerInfo *root,
 
 	/* Use rows/width estimates made by set_baserel_size_estimates. */
 	rows = baserel->rows;
+#if PG_VERSION_NUM >= 90600
+	width = baserel->reltarget->width;
+#else
 	width = baserel->width;
+#endif
 
 	/*
 	 * Back into an estimate of the number of retrieved rows.  Just in
@@ -1596,7 +1604,6 @@ ec_member_matches_foreign(PlannerInfo *root, RelOptInfo *rel,
 	state->current = expr;
 	return true;
 }
-#endif
 
 /*
  * Force assorted GUC parameters to settings that ensure that we'll output
@@ -1648,7 +1655,6 @@ reset_transmission_modes(int nestlevel)
 	AtEOXact_GUC(true, nestlevel);
 }
 
-#if 0
 /*
  * prepare_foreign_modify
  *		Establish a prepared statement for execution of INSERT/UPDATE/DELETE
