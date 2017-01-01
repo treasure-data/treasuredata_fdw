@@ -1,0 +1,43 @@
+{
+   "name": "treasuredata_fdw",
+   "abstract": "PostgreSQL Foreign Data Wrapper for Treasure Data",
+   "description": "This extension implements a Foreign Data Wrapper for Treasure Data. It is supported on PostgreSQL 9.4 and above.",
+   "version": "1.0.0",
+   "maintainer": "Mitsunori Komatsu <komamitsu@gmail.com>",
+   "license": "apache_2_0",
+   "provides": {
+      "treasuredata_fdw": {
+         "abstract": "PostgreSQL Foreign Data Wrapper for Treasure Data",
+         "file": "treasuredata_fdw--1.0.sql",
+         "docfile": "README.md",
+         "version": "1.0.0"
+      }
+   },
+   "prereqs": {
+      "runtime": {
+         "requires": {
+            "PostgreSQL": "9.4.0"
+         }
+      }
+   },
+   "resources": {
+      "bugtracker": {
+        "web": "https://github.com/komamitsu/treasuredata_fdw/issues"
+      },
+      "repository": {
+        "url":  "https://github.com/komamitsu/treasuredata_fdw.git",
+        "web":  "https://github.com/komamitsu/treasuredata_fdw/",
+        "type": "git"
+      }
+   },
+   "generated_by": "Mitsunori Komatsu",
+   "meta-spec": {
+      "version": "1.0.0",
+      "url": "http://pgxn.org/meta/spec.txt"
+   },
+   "tags": [
+      "treasure data",
+      "fdw",
+      "foreign data wrapper"
+   ]
+}
