@@ -30,7 +30,7 @@ SHLIB_LINK = $(libpq) $(ADDRESS_SANITIZE)
 LDFLAGS = $(ADDRESS_SANITIZE)
 
 EXTENSION = treasuredata_fdw
-DATA = treasuredata_fdw--0.9.sql
+DATA = treasuredata_fdw--1.0.sql
 
 REGRESS = treasuredata_fdw
 

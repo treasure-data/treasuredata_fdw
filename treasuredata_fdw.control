@@ -1,5 +1,5 @@
 # treasuredata_fdw extension
 comment = 'foreign-data wrapper for Treasure Data'
-default_version = '0.9'
+default_version = '1.0'
 module_pathname = '$libdir/treasuredata_fdw'
 relocatable = true
