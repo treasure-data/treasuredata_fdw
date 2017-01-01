@@ -36,10 +36,6 @@ typedef enum
 	QUERY_ENGINE_PRESTO
 } QueryEngineType;
 
-/* in treasuredata_fdw.c */
-extern int	set_transmission_modes(void);
-extern void reset_transmission_modes(int nestlevel);
-
 extern void ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option);
 
 /* in deparse.c */
