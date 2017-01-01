@@ -6,11 +6,18 @@ PostgreSQL Foreign Data Wrapper for Treasure Data
 ## Installation
 This FDW uses [td-client-rust](https://github.com/komamitsu/td-client-rust). So you need to install [Rust](https://www.rust-lang.org/) first.
 
-And then, type these commands
+With [PGXN client](http://pgxnclient.projects.pgfoundry.org/):
 
 ```
-$ make
-$ sudo make install
+$ pgxn install treasuredata_fdw
+```
+
+From source:
+
+```
+$ git clone https://github.com/komamitsu/treasuredata_fdw.git
+$ cd treasuredata_fdw
+$ make && sudo make install
 ```
 
 ## Setup
