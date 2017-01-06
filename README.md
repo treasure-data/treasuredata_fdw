@@ -26,7 +26,7 @@ Connect to your PostgreSQL and create an extension and foreign server
 ```
 CREATE EXTENSION treasuredata_fdw;
 
-CREATE SERVER treasuredata_server FOREIGN DATA WRAPPER treasuredata_server;
+CREATE SERVER treasuredata_server FOREIGN DATA WRAPPER treasuredata_fdw;
 ```
 
 ## Usage
