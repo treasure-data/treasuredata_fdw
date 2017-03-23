@@ -20,6 +20,12 @@ $ cd treasuredata_fdw
 $ make && sudo make install
 ```
 
+When building this FDW on macOS, you may fail to build due to missing OpenSSL header files (https://github.com/sfackler/rust-openssl/issues/255). The following commands would solve the error.
+```
+export OPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include
+export DEP_OPENSSL_INCLUDE=/usr/local/opt/openssl/include
+```
+
 ## Setup
 Connect to your PostgreSQL and create an extension and foreign server
 
