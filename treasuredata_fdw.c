@@ -2398,6 +2398,7 @@ make_tuple_from_result_row(void *td_client,
 
 	if (fetchResultRow(td_client, tupdesc->natts, result_values) != 0)
 	{
+		error_context_stack = errcallback.previous;
 		MemoryContextSwitchTo(oldcontext);
 		MemoryContextReset(temp_context);
 		return NULL;
