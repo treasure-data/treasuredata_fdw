@@ -26,7 +26,7 @@ code-format:
 
 .PHONY: all bridge_td_client_rust code-format
 
-SHLIB_LINK = $(libpq) $(ADDRESS_SANITIZE)
+SHLIB_LINK = $(libpq) -lz $(ADDRESS_SANITIZE)
 LDFLAGS = $(ADDRESS_SANITIZE)
 
 EXTENSION = treasuredata_fdw
