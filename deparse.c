@@ -1330,8 +1330,8 @@ deparseConst(Const *node, deparse_expr_cxt *context)
 	Oid			typoutput;
 	bool		typIsVarlena;
 	char	   *extval;
-	bool		isfloat = false;
 #if 0
+	bool		isfloat = false;
 	bool		needlabel;
 #endif
 
@@ -1370,8 +1370,10 @@ deparseConst(Const *node, deparse_expr_cxt *context)
 						appendStringInfo(buf, "(%s)", extval);
 					else
 						appendStringInfoString(buf, extval);
+#if 0
 					if (strcspn(extval, "eE.") != strlen(extval))
 						isfloat = true; /* it looks like a float */
+#endif
 				}
 				else
 					appendStringInfo(buf, "'%s'", extval);
