@@ -161,42 +161,70 @@ pub extern fn fetch_result_row(
 
     let query_state = unsafe { &mut *td_query_state };
 
+    fn encoded_str_of_pg_bool(b: bool) -> &'static str {
+        if b { "1" }
+        else { "0" }
+    }
+
+    fn encoded_string_of_pg_array_elm(x: &Value, debug_log: extern fn(usize, &[u8])) -> String {
+        match x {
+            &Value::Nil => "NULL".to_string(),
+            &Value::Boolean(b) => encoded_str_of_pg_bool(b).to_string(),
+            &Value::Integer(Integer::U64(ui)) => ui.to_string(),
+            &Value::Integer(Integer::I64(si)) => si.to_string(),
+            &Value::Float(Float::F32(f)) => f.to_string(),
+            &Value::Float(Float::F64(d)) => d.to_string(),
+            &Value::String(ref s) => format!("\"{}\"", s),
+            &Value::Array(ref xs) => {
+                let s = xs.iter()
+                    .map(|x| encoded_string_of_pg_array_elm(x, debug_log))
+                    .collect::<Vec<String>>()
+                    .join(",");
+                format!("{{{}}}", s)
+            },
+            other => {
+                log!(debug_log, "fetch_result_row: {:?} is not supported as an array", other);
+                "NULL".to_string()
+            }
+        }
+    }
+
     let call_add_bytes = |bytes: &[u8]| {
         add_bytes(context, bytes.len(), bytes)
+    };
+
+    let encode_value_in_pg = |x: Value| {
+        match x {
+            Value::Nil =>
+                add_nil(context),
+            Value::Boolean(b) =>
+                call_add_bytes(encoded_str_of_pg_bool(b).as_bytes()),
+            Value::Integer(Integer::U64(ui)) =>
+                call_add_bytes(ui.to_string().as_bytes()),
+            Value::Integer(Integer::I64(si)) =>
+                call_add_bytes(si.to_string().as_bytes()),
+            Value::Float(Float::F32(f)) =>
+                call_add_bytes(f.to_string().as_bytes()),
+            Value::Float(Float::F64(d)) =>
+                call_add_bytes(d.to_string().as_bytes()),
+            Value::String(s) =>
+                call_add_bytes(s.as_bytes()),
+            Value::Binary(bs) =>
+                call_add_bytes(bs.as_slice()),
+            Value::Array(_) =>
+                call_add_bytes(encoded_string_of_pg_array_elm(&x, debug_log).as_bytes()),
+            other => {
+                log!(debug_log, "fetch_result_row: {:?} is not supported", other);
+                add_nil(context)
+            },
+        }
     };
 
     match query_state.result_receiver.recv() {
         Ok(result) => match result {
             Some(xs) => {
                 for x in xs.into_iter() {
-                    match x {
-                        Value::Nil =>
-                            add_nil(context),
-                        Value::Boolean(b) =>
-                            call_add_bytes(
-                                if b {
-                                    "1".as_bytes()
-                                }
-                                else {
-                                    "0".as_bytes()
-                                }),
-                        Value::Integer(Integer::U64(ui)) =>
-                            call_add_bytes(ui.to_string().as_bytes()),
-                        Value::Integer(Integer::I64(si)) =>
-                            call_add_bytes(si.to_string().as_bytes()),
-                        Value::Float(Float::F32(f)) =>
-                            call_add_bytes(f.to_string().as_bytes()),
-                        Value::Float(Float::F64(d)) =>
-                            call_add_bytes(d.to_string().as_bytes()),
-                        Value::String(s) =>
-                            call_add_bytes(s.as_bytes()),
-                        Value::Binary(bs) =>
-                            call_add_bytes(bs.as_slice()),
-                        other => {
-                            log!(debug_log, "fetch_result_row: {:?} is not supported", other);
-                            add_nil(context)
-                        },
-                    }
+                    encode_value_in_pg(x)
                 };
                 true
             },
