@@ -42,12 +42,6 @@ typedef struct
 } fetch_result_context;
 
 static int add_nil(fetch_result_context *context);
-static int add_bool(fetch_result_context *context, bool b);
-static int add_u64(fetch_result_context *context, unsigned long i);
-static int add_i64(fetch_result_context *context, signed long i);
-static int add_f32(fetch_result_context *context, float f);
-static int add_f64(fetch_result_context *context, double f);
-static int add_string(fetch_result_context *context, size_t len, const char *s);
 static int add_bytes(fetch_result_context *context, size_t len, const char *s);
 static void debug_log(size_t len, const char *msg);
 static void error_log(size_t len, const char *msg);
@@ -66,12 +60,6 @@ extern bool fetch_result_row(
     void *query_state,
     fetch_result_context *context,
     int (*add_nil)(fetch_result_context *),
-    int (*add_bool)(fetch_result_context *, bool),
-    int (*add_u64)(fetch_result_context *, unsigned long),
-    int (*add_i64)(fetch_result_context *, signed long),
-    int (*add_f32)(fetch_result_context *, float),
-    int (*add_f64)(fetch_result_context *, double),
-    int (*add_string)(fetch_result_context *, size_t, const char *),
     int (*add_bytes)(fetch_result_context *, size_t, const char *),
     void (*debug_log)(size_t, const char *),
     void (*error_log)(size_t, const char *)
@@ -108,12 +96,6 @@ int fetchResultRow(void *td_query_state, int natts, char **values)
 	          td_query_state,
 	          &context,
 	          add_nil,
-	          add_bool,
-	          add_u64,
-	          add_i64,
-	          add_f32,
-	          add_f64,
-	          add_string,
 	          add_bytes,
 	          debug_log,
 	          error_log);
@@ -135,66 +117,6 @@ void releaseResource(void *td_query_state)
 static int add_nil(fetch_result_context *context)
 {
 	context->values[context->index] = NULL;
-	context->index++;
-	return 0;
-}
-
-static int add_bool(fetch_result_context *context, bool b)
-{
-	int buf_size = 2;
-	void *buf = ALLOC(buf_size);
-	snprintf(buf, buf_size, "%d", b ? 1 : 0);
-	context->values[context->index] = buf;
-	context->index++;
-	return 0;
-}
-
-static int add_u64(fetch_result_context *context, unsigned long i)
-{
-	int buf_size = 24;
-	void *buf = ALLOC(buf_size);
-	snprintf(buf, buf_size, "%ld", i);
-	context->values[context->index] = buf;
-	context->index++;
-	return 0;
-}
-
-static int add_i64(fetch_result_context *context, signed long i)
-{
-	int buf_size = 24;
-	void *buf = ALLOC(buf_size);
-	snprintf(buf, buf_size, "%ld", i);
-	context->values[context->index] = buf;
-	context->index++;
-	return 0;
-}
-
-static int add_f32(fetch_result_context *context, float f)
-{
-	int buf_size = 24;
-	void *buf = ALLOC(buf_size);
-	snprintf(buf, buf_size, "%f", f);
-	context->values[context->index] = buf;
-	context->index++;
-	return 0;
-}
-
-static int add_f64(fetch_result_context *context, double f)
-{
-	int buf_size = 24;
-	void *buf = ALLOC(buf_size);
-	snprintf(buf, buf_size, "%f", f);
-	context->values[context->index] = buf;
-	context->index++;
-	return 0;
-}
-
-static int add_string(fetch_result_context *context, size_t len, const char *s)
-{
-	char *buf = (char*)ALLOC(len + 1);
-	memcpy(buf, s, len);
-	buf[len] = '\0';
-	context->values[context->index] = buf;
 	context->index++;
 	return 0;
 }

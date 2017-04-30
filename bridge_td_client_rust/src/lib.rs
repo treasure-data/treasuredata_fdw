@@ -154,12 +154,6 @@ pub extern fn fetch_result_row(
     td_query_state: *mut TdQueryState,
     context: *const c_void,
     add_nil: extern fn(*const c_void),
-    add_bool: extern fn(*const c_void, bool),
-    add_u64: extern fn(*const c_void, u64),
-    add_i64: extern fn(*const c_void, i64),
-    add_f32: extern fn(*const c_void, f32),
-    add_f64: extern fn(*const c_void, f64),
-    add_string: extern fn(*const c_void, usize, &[u8]),
     add_bytes: extern fn(*const c_void, usize, &[u8]),
     debug_log: extern fn(usize, &[u8]),
     error_log: extern fn(usize, &[u8])
@@ -167,25 +161,37 @@ pub extern fn fetch_result_row(
 
     let query_state = unsafe { &mut *td_query_state };
 
+    let call_add_bytes = |bytes: &[u8]| {
+        add_bytes(context, bytes.len(), bytes)
+    };
+
     match query_state.result_receiver.recv() {
         Ok(result) => match result {
             Some(xs) => {
                 for x in xs.into_iter() {
                     match x {
-                        Value::Nil => add_nil(context),
-                        Value::Boolean(b) => add_bool(context, b),
-                        Value::Integer(Integer::U64(ui)) => add_u64(context, ui),
-                        Value::Integer(Integer::I64(si)) => add_i64(context, si),
-                        Value::Float(Float::F32(f)) => add_f32(context, f),
-                        Value::Float(Float::F64(d)) => add_f64(context, d),
-                        Value::String(s) => {
-                            let bytes = s.as_bytes();
-                            add_string(context, bytes.len(), bytes)
-                        },
-                        Value::Binary(bs) => {
-                            let bytes = bs.as_slice();
-                            add_bytes(context, bytes.len(), bytes)
-                        },
+                        Value::Nil =>
+                            add_nil(context),
+                        Value::Boolean(b) =>
+                            call_add_bytes(
+                                if b {
+                                    "1".as_bytes()
+                                }
+                                else {
+                                    "0".as_bytes()
+                                }),
+                        Value::Integer(Integer::U64(ui)) =>
+                            call_add_bytes(ui.to_string().as_bytes()),
+                        Value::Integer(Integer::I64(si)) =>
+                            call_add_bytes(si.to_string().as_bytes()),
+                        Value::Float(Float::F32(f)) =>
+                            call_add_bytes(f.to_string().as_bytes()),
+                        Value::Float(Float::F64(d)) =>
+                            call_add_bytes(d.to_string().as_bytes()),
+                        Value::String(s) =>
+                            call_add_bytes(s.as_bytes()),
+                        Value::Binary(bs) =>
+                            call_add_bytes(bs.as_slice()),
                         other => {
                             log!(debug_log, "fetch_result_row: {:?} is not supported", other);
                             add_nil(context)
