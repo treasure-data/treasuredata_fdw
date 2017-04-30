@@ -59,6 +59,31 @@ SELECT COUNT(1) FROM td_www_access WHERE time in (SELECT MIN(time) FROM td_www_a
      1
 (1 row)
 
+CREATE FOREIGN TABLE td_array_test (
+    str_array text[],
+    int_array integer[],
+    long_array bigint[],
+    float_array float[],
+    double_array float[],
+    str_array_array text[][],
+    int_array_array integer[][],
+    long_array_array bigint[][],
+    float_array_array float[][],
+    double_array_array float[][]
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'treasuredata_fdw',
+    query_engine '<%= @query_engine %>',
+    table 'array_test'
+);
+SELECT * FROM td_array_test;
+    str_array    | int_array |             long_array             |  float_array  |    double_array     |     str_array_array      | int_array_array |                 long_array_array                  |   float_array_array   |      double_array_array       
+-----------------+-----------+------------------------------------+---------------+---------------------+--------------------------+-----------------+---------------------------------------------------+-----------------------+-------------------------------
+ {one,two,three} | {1,2,3}   | {1000000000,2000000000,3000000000} | {1.1,2.2,3.3} | {1.111,2.222,3.333} | {{one,two},{three,four}} | {{1,2},{3,4}}   | {{1000000000,2000000000},{3000000000,4000000000}} | {{1.1,2.2},{3.3,4.4}} | {{1.111,2.222},{3.333,4.444}}
+(1 row)
+
 DROP FOREIGN TABLE td_www_access;
+DROP FOREIGN TABLE td_array_test;
 DROP SERVER treasuredata_server;
 DROP EXTENSION treasuredata_fdw CASCADE;
