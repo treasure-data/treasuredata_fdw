@@ -4,7 +4,6 @@
 *.o
 *.so
 target
-Cargo.lock
 test_bridge
 sql/treasuredata_fdw.sql
 expected/treasuredata_fdw.out
