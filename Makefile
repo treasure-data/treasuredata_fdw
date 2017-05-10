@@ -11,7 +11,7 @@ else
 ADDRESS_SANITIZE = 
 endif
 
-EXTRA_CLEAN = $(RUSTLIBDIR)
+EXTRA_CLEAN = $(RUSTLIBDIR) sql/treasuredata_fdw.sql expected/treasuredata_fdw.out
 
 all: bridge_td_client_rust
 
