@@ -35,6 +35,18 @@ CREATE EXTENSION treasuredata_fdw;
 CREATE SERVER treasuredata_server FOREIGN DATA WRAPPER treasuredata_fdw;
 ```
 
+## Update version
+
+To update an existing treasuredata_fdw installation from versions earlier than 1.1 you can take the following steps:
+
+- Download and install treasuredata_fdw version 1.1 using instructions from the "Instllation" section
+- Restart the PostgreSQL server
+- Run
+
+```
+ALTER EXTENSION treasuredata_fdw UPDATE;
+```
+
 ## Usage
 Specify your API key, database, query engine type ('presto' or 'hive') in CREATE FOREIGN TABLE statement. You can specify either your table name or query for Treasure Data directly.
 
