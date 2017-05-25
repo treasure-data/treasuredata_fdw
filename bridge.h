@@ -24,5 +24,18 @@ extern int fetchResultRow(
 
 extern void releaseResource(void *td_query_state);
 
+extern void *importBegin(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames);
+
+extern void importAppend(void *import_state, const char **values);
+
+extern void importCommit(void *import_state);
+
 #endif   /* TREASUREDATA_FDW_BRIDGE_H */
 

@@ -9,11 +9,46 @@ use std::thread;
 use td_client::client::*;
 use td_client::model::*;
 use td_client::value::*;
+use td_client::table_import::*;
 
 #[repr(C)]
 pub struct TdQueryState {
     job_id: u64,
     result_receiver: Receiver<Option<Vec<Value>>>
+}
+
+#[repr(C)]
+pub struct TdImportState {
+    td_client: Client<DefaultRequestExecutor>,
+    database: String,
+    table: String,
+    column_types: Vec<ImportColumnType>,
+    column_names: Vec<String>,
+    writable_chunk: TableImportWritableChunk
+}
+
+#[derive(Debug)]
+enum ImportColumnType {
+    Int,
+    Float,
+    String,
+    Bytes,
+    Map,
+    Array
+}
+
+impl <'a> From<&'a str> for ImportColumnType {
+    fn from(s: &'a str) -> Self {
+        match s {
+            "int" => ImportColumnType::Int,
+            "float" => ImportColumnType::Float,
+            "string" => ImportColumnType::String,
+            "bytes" => ImportColumnType::Bytes,
+            "map" => ImportColumnType::Map,
+            "array" => ImportColumnType::Array,
+            _ => panic!("Unexpected ImportColumnType: {:?}", s)
+        }
+    }
 }
 
 fn convert_str_from_raw_str<'a>(raw: *const c_char) -> &'a str {
@@ -46,6 +81,14 @@ macro_rules! log {
     });
 }
 
+fn create_client<'a>(apikey: &'a str, endpoint: &'a Option<&'a str>) -> Client<DefaultRequestExecutor> {
+    let mut client = Client::new(apikey);
+    if endpoint.is_some() {
+        client.endpoint(endpoint.unwrap());
+    }
+    client
+}
+
 #[no_mangle]
 pub extern fn issue_query(
     raw_apikey: *const c_char,
@@ -69,10 +112,7 @@ pub extern fn issue_query(
     log!(debug_log, "issue_query: database={:?}", database);
     log!(debug_log, "issue_query: query={:?}", query);
 
-    let mut client = Client::new(apikey);
-    if endpoint.is_some() {
-        client.endpoint(endpoint.unwrap());
-    }
+    let client = create_client(apikey, &endpoint);
     let query_type = match QueryType::from_str(query_engine) {
         Ok(query_type) => query_type,
         Err(err) => {
@@ -238,6 +278,162 @@ pub extern fn fetch_result_row(
             false
         }
     }
+}
+
+#[no_mangle]
+pub extern fn import_begin(
+    raw_apikey: *const c_char,
+    raw_endpoint: *const c_char,
+    raw_database: *const c_char,
+    raw_table: *const c_char,
+    column_size: usize,
+    raw_coltypes: Vec<&CStr>,
+    raw_colnames: Vec<&CStr>,
+    debug_log: extern fn(usize, &[u8]),
+    error_log: extern fn(usize, &[u8])
+    ) -> *mut TdImportState {
+    let apikey = convert_str_from_raw_str(raw_apikey);
+    let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
+    let database = convert_str_from_raw_str(raw_database);
+    let table = convert_str_from_raw_str(raw_table);
+
+    log!(debug_log, "import_begin: start");
+    log!(debug_log, "import_begin: apikey.len={:?}", apikey.len());
+    log!(debug_log, "import_begin: endpoint={:?}", endpoint);
+    log!(debug_log, "import_begin: database={:?}", database);
+    log!(debug_log, "import_begin: table={:?}", table);
+
+    let mut column_types = Vec::new();
+    let mut column_names = Vec::new();
+    for i in 0..column_size {
+        let raw_coltype = raw_coltypes[i];
+        let raw_colname = raw_colnames[i];
+        let t = raw_coltype.to_str().unwrap();
+        let name = raw_colname.to_str().unwrap();
+
+        column_types.push(ImportColumnType::from(t));
+        column_names.push(name);
+    }
+    if column_types.len() != column_names.len() {
+        log!(error_log, "import_begin: the sizes of types and names don't match. types:{:?}, names:{:?}", column_types, column_names);
+    }
+
+    let client = create_client(apikey, &endpoint);
+    let result = TableImportWritableChunk::new();
+    if result.is_err() {
+        // TODO: Fix ownership problem of `result` here
+        log!(error_log, "import_begin: Failed to create a writable chunk");
+    }
+    let writable_chunk = result.unwrap();
+
+    let import_state = TdImportState {
+        td_client: client,
+        database: database.to_string(),
+        table: table.to_string(),
+        column_types: column_types,
+        column_names: column_names.iter().map(|t| t.to_string()).collect::<Vec<String>>(),
+        writable_chunk: writable_chunk
+    };
+
+    let td_import_state = Box::into_raw(Box::new(import_state));
+
+    log!(debug_log, "import_begin: finished");
+
+    td_import_state
+}
+
+#[no_mangle]
+pub extern fn import_append(
+    td_import_state: *mut TdImportState,
+    raw_values: Vec<&CStr>,
+    debug_log: extern fn(usize, &[u8]),
+    error_log: extern fn(usize, &[u8])) {
+
+    let import_state = unsafe { &mut *td_import_state };
+    let column_types = &import_state.column_types;
+    let column_names = &import_state.column_names;
+    let mut writable_chunk = &mut import_state.writable_chunk;
+    writable_chunk.next_row(column_types.len() as u32).unwrap();
+
+    if column_types.len() != raw_values.len() {
+        log!(error_log, "import_append: the sizes of types and values don't match. types:{:?}, values:{:?}", column_types.len(), raw_values.len());
+    }
+
+    let mut i = 0;
+    for coltype in column_types {
+        let ref colname = column_names[i];
+        let value = raw_values[i];
+        if value.as_ptr().is_null() {
+            writable_chunk.write_key_and_nil(colname.as_str()).unwrap();
+        }
+        else {
+            let value_str = value.to_str().unwrap();
+            match coltype {
+                &ImportColumnType::Int => {
+                    writable_chunk
+                        .write_key_and_i64(colname.as_str(), value_str.parse::<i64>().unwrap())
+                        .unwrap();
+                    ()
+                },
+                &ImportColumnType::Float => {
+                    writable_chunk
+                        .write_key_and_f64(colname.as_str(), value_str.parse::<f64>().unwrap())
+                        .unwrap();
+                    ()
+                },
+                &ImportColumnType::String => {
+                    writable_chunk
+                        .write_key_and_str(colname.as_str(), value_str)
+                        .unwrap();
+                    ()
+                },
+                &ImportColumnType::Bytes => {
+                    writable_chunk
+                        .write_key_and_bin(colname.as_str(), value_str.as_bytes())
+                        .unwrap();
+                    ()
+                },
+                &ImportColumnType::Map => log!(error_log, "import_append: MAP type isn't supported yet"),
+                &ImportColumnType::Array => log!(error_log, "import_append: ARRAY type isn't supported yet"),
+            }
+        }
+        i += 1;
+    }
+}
+
+#[no_mangle]
+pub extern fn import_commit(
+    td_import_state: *mut TdImportState,
+    debug_log: extern fn(usize, &[u8]),
+    error_log: extern fn(usize, &[u8])) {
+
+    log!(debug_log, "import_commit: start");
+
+    let import_state = unsafe { &mut *td_import_state };
+    let mut writable_chunk = TableImportWritableChunk::new().unwrap();
+    let ref mut orig_writable_chunk = import_state.writable_chunk;
+    std::mem::swap(&mut writable_chunk, orig_writable_chunk);
+    drop(orig_writable_chunk);
+    match writable_chunk.close() {
+        Ok(readable_chunk) => {
+            let client = &import_state.td_client;
+            let result = client.import_msgpack_gz_file_to_table(
+                import_state.database.as_str(),
+                import_state.table.as_str(),
+                readable_chunk.file_path.as_str(), None);
+            if result.is_err() {
+                log!(error_log, "import_commit: Failed to import readable chunk: {:?}", result);
+            }
+        },
+        Err(err) =>
+            log!(error_log, "import_commit: Failed to close writable chunk: {:?}", err),
+    };
+
+    unsafe {
+        Box::from_raw(td_import_state);
+    }
+
+    log!(debug_log, "import_commit: finished");
 }
 
 #[no_mangle]

@@ -67,6 +67,33 @@ extern bool fetch_result_row(
 
 extern void release_resource(void *td_query_state);
 
+extern void *import_begin(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames,
+    void (*debug_log)(size_t, const char*),
+    void (*error_log)(size_t, const char*)
+);
+
+extern void import_append(
+    void *import_state,
+    const char **values,
+    void (*debug_log)(size_t, const char *),
+    void (*error_log)(size_t, const char *)
+);
+
+extern void import_commit(
+    void *import_state,
+    void (*debug_log)(size_t, const char *),
+    void (*error_log)(size_t, const char *)
+);
+
+// TODO: Add release_import_resource()
+
 void *issueQuery(
     const char *apikey,
     const char *endpoint,
@@ -112,6 +139,44 @@ int fetchResultRow(void *td_query_state, int natts, char **values)
 void releaseResource(void *td_query_state)
 {
 	release_resource(td_query_state);
+}
+
+void *importBegin(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames)
+{
+    return import_begin(
+            apikey,
+            endpoint,
+            database,
+            table,
+            column_size,
+            coltypes,
+            colnames,
+            debug_log,
+            error_log);
+}
+
+void importAppend(void *import_state, const char **values)
+{
+    import_append(
+            import_state,
+            values,
+            debug_log,
+            error_log);
+}
+
+void importCommit(void *import_state)
+{
+    import_commit(
+            import_state,
+            debug_log,
+            error_log);
 }
 
 static int add_nil(fetch_result_context *context)
