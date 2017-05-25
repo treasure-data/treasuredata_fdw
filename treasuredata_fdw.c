@@ -176,7 +176,6 @@ typedef struct TdFdwModifyState
 
 	/* for remote query execution */
 	void       *td_client;
-	char	   *p_name;			/* name of prepared statement, if created */
 
 	/* extracted fdw_private data */
 	char	   *query;			/* text of INSERT/UPDATE/DELETE command */
@@ -1116,22 +1115,6 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 	user = GetUserMapping(userid, server->serverid);
 #endif
 
-	/* Open connection; report that we'll create a prepared statement. */
-    {
-		TdFdwOption fdw_option;
-        ForeignTable *table = GetForeignTable(RelationGetRelid(rel));
-		ExtractFdwOptions(table, &fdw_option);
-
-        // FIXME
-		fmstate->td_client = issueQuery(
-		                         fdw_option.apikey,
-		                         fdw_option.endpoint,
-		                         fdw_option.query_engine,
-		                         fdw_option.database,
-		                         fmstate->query);
-    }
-	fmstate->p_name = NULL;		/* prepared statement not made yet */
-
 	/* Deconstruct fdw_private data. */
 	fmstate->query = strVal(list_nth(fdw_private,
 	                                 FdwModifyPrivateUpdateSql));
@@ -1182,6 +1165,13 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 	// if (operation == CMD_INSERT || operation == CMD_UPDATE)
 	if (operation == CMD_INSERT)
 	{
+        char **column_types = palloc0(sizeof(char *) * fmstate->p_nums);
+        char **column_names = palloc0(sizeof(char *) * fmstate->p_nums);
+        
+		TdFdwOption fdw_option;
+        ForeignTable *table = GetForeignTable(RelationGetRelid(rel));
+		ExtractFdwOptions(table, &fdw_option);
+
 		/* Set up for remaining transmittable parameters */
 		foreach(lc, fmstate->target_attrs)
 		{
@@ -1192,8 +1182,40 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 
 			getTypeOutputInfo(attr->atttypid, &typefnoid, &isvarlena);
 			fmgr_info(typefnoid, &fmstate->p_flinfo[fmstate->p_nums]);
+
+            if (typefnoid == 43) {
+                // Integer
+                column_types[fmstate->p_nums] = "int";
+            }
+            else if (typefnoid == 1043) {
+                // String
+                column_types[fmstate->p_nums] = "string";
+            }
+            // TODO: Take care of other types
+
+            // TODO: 128 is enough?
+            column_names[fmstate->p_nums] = palloc0(128);
+            strncpy(column_names[fmstate->p_nums], NameStr(attr->attname), 128);
+
+elog(INFO, ">>>> attnum=%d, typefnoid=%d, isvarlena=%d, attname=%s, atttypid=%d, p_flinfo.fn_oid=%d",
+        attnum, typefnoid, isvarlena, NameStr(attr->attname), attr->atttypid, fmstate->p_flinfo[fmstate->p_nums].fn_oid);
+
 			fmstate->p_nums++;
 		}
+
+        /* Setup td-client */
+        {
+elog(INFO, ">>>> Calling brigde functions...");
+            fmstate->td_client = importBegin(
+                                     fdw_option.apikey,
+                                     fdw_option.endpoint,
+                                     fdw_option.database,
+                                     fdw_option.table,
+                                     fmstate->p_nums,
+                                     column_types,
+                                     column_names);
+elog(INFO, ">>>> Done!!!! > Calling brigde functions...");
+        }
 	}
     else
     {
