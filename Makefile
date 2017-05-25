@@ -21,6 +21,9 @@ bridge_td_client_rust:
 test_bridge: $(RUSTLIB) bridge.c test_bridge.c
 	cc -DWITHOUT_PG -o $@ $(RUSTLIB) bridge.c test_bridge.c
 
+test_bridge_import: $(RUSTLIB) bridge.c test_bridge_import.c
+	cc -DWITHOUT_PG -o $@ $(RUSTLIB) bridge.c test_bridge_import.c
+
 code-format:
 	astyle --style=bsd --indent=tab -SK -n *.c *.h
 
