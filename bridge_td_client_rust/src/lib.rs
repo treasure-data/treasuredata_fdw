@@ -22,6 +22,7 @@ pub struct TdImportState {
     td_client: Client<DefaultRequestExecutor>,
     database: String,
     table: String,
+    column_size: usize,
     column_types: Vec<ImportColumnType>,
     column_names: Vec<String>,
     writable_chunk: TableImportWritableChunk
@@ -340,8 +341,9 @@ pub extern fn import_begin(
         td_client: client,
         database: database.to_string(),
         table: table.to_string(),
+        column_size: column_size,
         column_types: column_types,
-        column_names: Vec::<String>::new(),
+        column_names: column_names,
         writable_chunk: writable_chunk
     };
 
@@ -355,56 +357,68 @@ pub extern fn import_begin(
 #[no_mangle]
 pub extern fn import_append(
     td_import_state: *mut TdImportState,
-    raw_values: Vec<&CStr>,
+    raw_values: *const *const c_char,
     debug_log: extern fn(usize, &[u8]),
     error_log: extern fn(usize, &[u8])) {
 
     let import_state = unsafe { &mut *td_import_state };
+    let column_size = import_state.column_size;
     let column_types = &import_state.column_types;
     let column_names = &import_state.column_names;
     let mut writable_chunk = &mut import_state.writable_chunk;
     writable_chunk.next_row(column_types.len() as u32).unwrap();
 
-    if column_types.len() != raw_values.len() {
-        log!(error_log, "import_append: the sizes of types and values don't match. types:{:?}, values:{:?}", column_types.len(), raw_values.len());
-    }
+    let sliced_raw_values = unsafe {
+        std::slice::from_raw_parts(raw_values, column_size)
+    };
+    let values = sliced_raw_values
+        .iter()
+        .map(|x| convert_str_opt_from_raw_str(*x))
+        .collect::<Vec<Option<&str>>>();
 
     let mut i = 0;
     for coltype in column_types {
         let ref colname = column_names[i];
-        let value = raw_values[i];
-        if value.as_ptr().is_null() {
-            writable_chunk.write_key_and_nil(colname.as_str()).unwrap();
-        }
-        else {
-            let value_str = value.to_str().unwrap();
-            match coltype {
-                &ImportColumnType::Int => {
-                    writable_chunk
-                        .write_key_and_i64(colname.as_str(), value_str.parse::<i64>().unwrap())
-                        .unwrap();
-                    ()
-                },
-                &ImportColumnType::Float => {
-                    writable_chunk
-                        .write_key_and_f64(colname.as_str(), value_str.parse::<f64>().unwrap())
-                        .unwrap();
-                    ()
-                },
-                &ImportColumnType::String => {
-                    writable_chunk
-                        .write_key_and_str(colname.as_str(), value_str)
-                        .unwrap();
-                    ()
-                },
-                &ImportColumnType::Bytes => {
-                    writable_chunk
-                        .write_key_and_bin(colname.as_str(), value_str.as_bytes())
-                        .unwrap();
-                    ()
-                },
-                &ImportColumnType::Map => log!(error_log, "import_append: MAP type isn't supported yet"),
-                &ImportColumnType::Array => log!(error_log, "import_append: ARRAY type isn't supported yet"),
+        match values[i] {
+            Some(value_str) => {
+                match coltype {
+                    &ImportColumnType::Int => {
+                        writable_chunk
+                            .write_key_and_i64(colname.as_str(), value_str.parse::<i64>().unwrap())
+                            .unwrap();
+                        ()
+                    },
+
+                    &ImportColumnType::Float => {
+                        writable_chunk
+                            .write_key_and_f64(colname.as_str(), value_str.parse::<f64>().unwrap())
+                            .unwrap();
+                        ()
+                    },
+
+                    &ImportColumnType::String => {
+                        writable_chunk
+                            .write_key_and_str(colname.as_str(), value_str)
+                            .unwrap();
+                        ()
+                    },
+
+                    &ImportColumnType::Bytes => {
+                        writable_chunk
+                            .write_key_and_bin(colname.as_str(), value_str.as_bytes())
+                            .unwrap();
+                        ()
+                    },
+
+                    &ImportColumnType::Map =>
+                        log!(error_log, "import_append: MAP type isn't supported yet"),
+
+                    &ImportColumnType::Array =>
+                        log!(error_log, "import_append: ARRAY type isn't supported yet"),
+                }
+            },
+            None => {
+                writable_chunk.write_key_and_nil(colname.as_str()).unwrap();
             }
         }
         i += 1;

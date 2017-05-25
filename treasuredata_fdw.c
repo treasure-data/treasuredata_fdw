@@ -296,6 +296,7 @@ static bool treasuredataAnalyzeForeignTable(Relation relation,
 static List *treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt,
         Oid serverOid);
 #endif
+
 /*
  * Helper functions
  */
@@ -304,6 +305,15 @@ static void estimate_path_cost_size(PlannerInfo *root,
                                     List *join_conds,
                                     double *p_rows, int *p_width,
                                     Cost *p_startup_cost, Cost *p_total_cost);
+
+static const char **convert_prep_stmt_params(TdFdwModifyState *fmstate,
+        ItemPointer tupleid,
+        TupleTableSlot *slot);
+
+static int set_transmission_modes(void);
+
+static void reset_transmission_modes(int nestlevel);
+
 #if 0
 static bool ec_member_matches_foreign(PlannerInfo *root, RelOptInfo *rel,
                                       EquivalenceClass *ec, EquivalenceMember *em,
@@ -311,9 +321,6 @@ static bool ec_member_matches_foreign(PlannerInfo *root, RelOptInfo *rel,
 static void fetch_more_data(ForeignScanState *node);
 static void close_cursor(PGconn *conn, unsigned int cursor_number);
 static void prepare_foreign_modify(TdFdwModifyState *fmstate);
-static const char **convert_prep_stmt_params(TdFdwModifyState *fmstate,
-        ItemPointer tupleid,
-        TupleTableSlot *slot);
 static void store_returning_result(TdFdwModifyState *fmstate,
                                    TupleTableSlot *slot, PGresult *res);
 static int treasuredataAcquireSampleRowsFunc(Relation relation, int elevel,
@@ -1213,8 +1220,8 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
                 fdw_option.database,
                 fdw_option.table,
                 fmstate->p_nums,
-                column_types,
-                column_names);
+                (const char **) column_types,
+                (const char **) column_names);
     }
     else
     {
@@ -1243,46 +1250,15 @@ treasuredataExecForeignInsert(EState *estate,
 	/* Set up the prepared statement on the remote server, if we didn't yet */
 	if (!fmstate->p_name)
 		prepare_foreign_modify(fmstate);
+#endif
 
 	/* Convert parameters needed by prepared statement to text form */
 	p_values = convert_prep_stmt_params(fmstate, NULL, slot);
-
-	/*
-	 * Execute the prepared statement, and check for success.
-	 *
-	 * We don't use a PG_TRY block here, so be careful not to throw error
-	 * without releasing the PGresult.
-	 */
-	res = PQexecPrepared(fmstate->conn,
-	                     fmstate->p_name,
-	                     fmstate->p_nums,
-	                     p_values,
-	                     NULL,
-	                     NULL,
-	                     0);
-	if (PQresultStatus(res) !=
-	        (fmstate->has_returning ? PGRES_TUPLES_OK : PGRES_COMMAND_OK))
-		pgfdw_report_error(ERROR, res, fmstate->conn, true, fmstate->query);
-
-	/* Check number of rows affected, and fetch RETURNING tuple if any */
-	if (fmstate->has_returning)
-	{
-		n_rows = PQntuples(res);
-		if (n_rows > 0)
-			store_returning_result(fmstate, slot, res);
-	}
-	else
-		n_rows = atoi(PQcmdTuples(res));
-
-	/* And clean up */
-	PQclear(res);
+    importAppend(fmstate->td_client, p_values);
 
 	MemoryContextReset(fmstate->temp_cxt);
 
-	/* Return NULL if nothing was inserted on the remote end */
-	return (n_rows > 0) ? slot : NULL;
-#endif
-    return NULL;
+    return slot;
 }
 
 #if 0
@@ -1440,30 +1416,9 @@ treasuredataEndForeignModify(EState *estate,
 	/* If fmstate is NULL, we are in EXPLAIN; nothing to do */
 	if (fmstate == NULL)
 		return;
-#if 0
-	/* If we created a prepared statement, destroy it */
-	if (fmstate->p_name)
-	{
-		char		sql[64];
-		PGresult   *res;
 
-		snprintf(sql, sizeof(sql), "DEALLOCATE %s", fmstate->p_name);
-
-		/*
-		 * We don't use a PG_TRY block here, so be careful not to throw error
-		 * without releasing the PGresult.
-		 */
-		res = PQexec(fmstate->conn, sql);
-		if (PQresultStatus(res) != PGRES_COMMAND_OK)
-			pgfdw_report_error(ERROR, res, fmstate->conn, true, sql);
-		PQclear(res);
-		fmstate->p_name = NULL;
-	}
-
-	/* Release remote connection */
-	ReleaseConnection(fmstate->conn);
-	fmstate->conn = NULL;
-#endif
+    // Upload the chunk file to Treasure Data
+    importCommit(fmstate->td_client);
 
 	fmstate->td_client = NULL;
 }
@@ -1661,6 +1616,7 @@ ec_member_matches_foreign(PlannerInfo *root, RelOptInfo *rel,
 	state->current = expr;
 	return true;
 }
+#endif
 
 /*
  * Force assorted GUC parameters to settings that ensure that we'll output
@@ -1712,6 +1668,7 @@ reset_transmission_modes(int nestlevel)
 	AtEOXact_GUC(true, nestlevel);
 }
 
+#if 0
 /*
  * prepare_foreign_modify
  *		Establish a prepared statement for execution of INSERT/UPDATE/DELETE
@@ -1751,6 +1708,7 @@ prepare_foreign_modify(TdFdwModifyState *fmstate)
 	/* This action shows that the prepare has been done. */
 	fmstate->p_name = p_name;
 }
+#endif
 
 /*
  * convert_prep_stmt_params
@@ -1816,6 +1774,7 @@ convert_prep_stmt_params(TdFdwModifyState *fmstate,
 	return p_values;
 }
 
+#if 0
 /*
  * store_returning_result
  *		Store the result of a RETURNING clause
