@@ -92,8 +92,6 @@ extern void import_commit(
     void (*error_log)(size_t, const char *)
 );
 
-// TODO: Add release_import_resource()
-
 void *issueQuery(
     const char *apikey,
     const char *endpoint,

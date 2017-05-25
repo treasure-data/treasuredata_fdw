@@ -287,41 +287,51 @@ pub extern fn import_begin(
     raw_database: *const c_char,
     raw_table: *const c_char,
     column_size: usize,
-    raw_coltypes: Vec<&CStr>,
-    raw_colnames: Vec<&CStr>,
+    raw_coltypes: *const *const c_char,
+    raw_colnames: *const *const c_char,
     debug_log: extern fn(usize, &[u8]),
     error_log: extern fn(usize, &[u8])
     ) -> *mut TdImportState {
+
+    log!(debug_log, "import_begin: start");
+
     let apikey = convert_str_from_raw_str(raw_apikey);
     let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
     let database = convert_str_from_raw_str(raw_database);
     let table = convert_str_from_raw_str(raw_table);
 
-    log!(debug_log, "import_begin: start");
+    let sliced_raw_coltypes = unsafe {
+        std::slice::from_raw_parts(raw_coltypes, column_size)
+    };
+    let column_types = sliced_raw_coltypes
+        .iter()
+        .map(|x| 
+             ImportColumnType::from(
+                 unsafe { CStr::from_ptr(*x) }
+                 .to_str().unwrap())
+            )
+        .collect::<Vec<ImportColumnType>>();
+
+    let sliced_raw_colnames = unsafe {
+        std::slice::from_raw_parts(raw_colnames, column_size)
+    };
+    let column_names = sliced_raw_colnames
+        .iter()
+        .map(|x| unsafe { CStr::from_ptr(*x) }.to_str().unwrap().to_string())
+        .collect::<Vec<String>>();
+
     log!(debug_log, "import_begin: apikey.len={:?}", apikey.len());
     log!(debug_log, "import_begin: endpoint={:?}", endpoint);
     log!(debug_log, "import_begin: database={:?}", database);
     log!(debug_log, "import_begin: table={:?}", table);
-
-    let mut column_types = Vec::new();
-    let mut column_names = Vec::new();
-    for i in 0..column_size {
-        let raw_coltype = raw_coltypes[i];
-        let raw_colname = raw_colnames[i];
-        let t = raw_coltype.to_str().unwrap();
-        let name = raw_colname.to_str().unwrap();
-
-        column_types.push(ImportColumnType::from(t));
-        column_names.push(name);
-    }
-    if column_types.len() != column_names.len() {
-        log!(error_log, "import_begin: the sizes of types and names don't match. types:{:?}, names:{:?}", column_types, column_names);
-    }
+    log!(debug_log, "import_begin: colmun_size={:?}", column_size);
+    log!(debug_log, "import_begin: colmun_types={:?}", column_types);
+    log!(debug_log, "import_begin: colmun_names={:?}", column_names);
 
     let client = create_client(apikey, &endpoint);
     let result = TableImportWritableChunk::new();
     if result.is_err() {
-        // TODO: Fix ownership problem of `result` here
+        // TODO: Fix ownership problem of `result` here to show the cause
         log!(error_log, "import_begin: Failed to create a writable chunk");
     }
     let writable_chunk = result.unwrap();
@@ -331,7 +341,7 @@ pub extern fn import_begin(
         database: database.to_string(),
         table: table.to_string(),
         column_types: column_types,
-        column_names: column_names.iter().map(|t| t.to_string()).collect::<Vec<String>>(),
+        column_names: Vec::<String>::new(),
         writable_chunk: writable_chunk
     };
 
