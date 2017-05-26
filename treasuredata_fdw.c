@@ -1020,11 +1020,7 @@ treasuredataPlanForeignModify(PlannerInfo *root,
 	}
 #endif
 
-	/*
-	 * Extract the relevant RETURNING list if any.
-	 */
 	if (plan->returningLists)
-//		returningList = (List *) list_nth(plan->returningLists, subplan_index);
 		elog(ERROR, "This FDW doesn't support RETURNING");
 
 	/*
@@ -1190,25 +1186,44 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 			getTypeOutputInfo(attr->atttypid, &typefnoid, &isvarlena);
 			fmgr_info(typefnoid, &fmstate->p_flinfo[fmstate->p_nums]);
 
-            if (typefnoid == 43) {
-                // Integer
+            elog(DEBUG1, "attnum=%d, typefnoid=%d, isvarlena=%d, attname=%s, atttypid=%d, p_flinfo.fn_oid=%d",
+                    attnum, typefnoid, isvarlena, NameStr(attr->attname), attr->atttypid, fmstate->p_flinfo[fmstate->p_nums].fn_oid);
+
+            if (
+                    typefnoid == 39 ||      /* small(int|serial) */
+                    typefnoid == 43 ||      /* (integer|serial) */
+                    typefnoid == 461        /* big(int|serial) */
+            ) {
+                /* Integer */
                 column_types[fmstate->p_nums] = "int";
             }
-            else if (typefnoid == 1047) {
-                // String
+            else if (
+                    typefnoid == 201 ||     /* (float4|real) */
+                    typefnoid == 215 ||     /* (float8|double precision) */
+                    typefnoid == 1702       /* (decimal|numeric) */
+            ) {
+                /* Float */
+                column_types[fmstate->p_nums] = "float";
+            }
+            else if (
+                    typefnoid == 47 ||     /* text */
+                    typefnoid == 1045 ||   /* varchar */
+                    typefnoid == 1047      /* char */
+            ) {
+                /* String */
                 column_types[fmstate->p_nums] = "string";
             }
-            // TODO: Take care of other types
+            // TODO: Take care of map type
             else {
                 elog(ERROR, "Unsupported typefnoid: %d", typefnoid);
             }
 
-            // TODO: 128 is enough?
-            column_names[fmstate->p_nums] = palloc0(128);
-            strncpy(column_names[fmstate->p_nums], NameStr(attr->attname), 128);
-
-            elog(DEBUG1, "attnum=%d, typefnoid=%d, isvarlena=%d, attname=%s, atttypid=%d, p_flinfo.fn_oid=%d",
-                    attnum, typefnoid, isvarlena, NameStr(attr->attname), attr->atttypid, fmstate->p_flinfo[fmstate->p_nums].fn_oid);
+            {
+                char *attname = NameStr(attr->attname);
+                int len_with_null_char = strlen(attname) + 1;
+                column_names[fmstate->p_nums] = palloc0(len_with_null_char);
+                strncpy(column_names[fmstate->p_nums], attname, len_with_null_char);
+            }
 
 			fmstate->p_nums++;
 		}
@@ -1245,8 +1260,8 @@ treasuredataExecForeignInsert(EState *estate,
 {
 	TdFdwModifyState *fmstate = (TdFdwModifyState *) resultRelInfo->ri_FdwState;
 	const char **p_values;
-	int			n_rows;
 #if 0
+	int			n_rows;
 	/* Set up the prepared statement on the remote server, if we didn't yet */
 	if (!fmstate->p_name)
 		prepare_foreign_modify(fmstate);
