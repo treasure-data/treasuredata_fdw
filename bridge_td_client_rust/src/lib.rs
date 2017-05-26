@@ -355,6 +355,7 @@ pub extern fn import_begin(
 }
 
 #[no_mangle]
+#[allow(unused_variables)]
 pub extern fn import_append(
     td_import_state: *mut TdImportState,
     raw_values: *const *const c_char,
@@ -446,16 +447,18 @@ pub extern fn import_commit(
                 import_state.table.as_str(),
                 readable_chunk.file_path.as_str(), None);
             if result.is_err() {
+                drop(readable_chunk);
+                unsafe { Box::from_raw(td_import_state) };
                 log!(error_log, "import_commit: Failed to import readable chunk: {:?}", result);
             }
         },
-        Err(err) =>
-            log!(error_log, "import_commit: Failed to close writable chunk: {:?}", err),
+        Err(err) => {
+            unsafe { Box::from_raw(td_import_state) };
+            log!(error_log, "import_commit: Failed to close writable chunk: {:?}", err);
+        },
     };
 
-    unsafe {
-        Box::from_raw(td_import_state);
-    }
+    unsafe { Box::from_raw(td_import_state) };
 
     log!(debug_log, "import_commit: finished");
 }
