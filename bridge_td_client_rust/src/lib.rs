@@ -1,4 +1,5 @@
 extern crate libc;
+extern crate time;
 extern crate td_client;
 use libc::{c_char, c_void};
 use std::ffi::CStr;
@@ -25,6 +26,7 @@ pub struct TdImportState {
     column_size: usize,
     column_types: Vec<ImportColumnType>,
     column_names: Vec<String>,
+    current_time: String,
     writable_chunk: TableImportWritableChunk
 }
 
@@ -325,8 +327,8 @@ pub extern fn import_begin(
     log!(debug_log, "import_begin: endpoint={:?}", endpoint);
     log!(debug_log, "import_begin: database={:?}", database);
     log!(debug_log, "import_begin: table={:?}", table);
-    log!(debug_log, "import_begin: colmun_size={:?}", column_size);
-    log!(debug_log, "import_begin: colmun_types={:?}", column_types);
+    log!(debug_log, "import_begin: column_size={:?}", column_size);
+    log!(debug_log, "import_begin: column_types={:?}", column_types);
     log!(debug_log, "import_begin: colmun_names={:?}", column_names);
 
     let client = create_client(apikey, &endpoint);
@@ -344,6 +346,7 @@ pub extern fn import_begin(
         column_size: column_size,
         column_types: column_types,
         column_names: column_names,
+        current_time: time::get_time().sec.to_string(),
         writable_chunk: writable_chunk
     };
 
@@ -367,6 +370,7 @@ pub extern fn import_append(
     let column_types = &import_state.column_types;
     let column_names = &import_state.column_names;
     let mut writable_chunk = &mut import_state.writable_chunk;
+    let current_time = &import_state.current_time;
     writable_chunk.next_row(column_types.len() as u32).unwrap();
 
     let sliced_raw_values = unsafe {
@@ -419,7 +423,14 @@ pub extern fn import_append(
                 }
             },
             None => {
-                writable_chunk.write_key_and_nil(colname.as_str()).unwrap();
+                if colname == "time" {
+                    let ct = current_time.clone();
+                    let time = ct.parse::<i64>().unwrap();
+                    writable_chunk.write_key_and_i64(colname.as_str(), time).unwrap();
+                }
+                else {
+                    writable_chunk.write_key_and_nil(colname.as_str()).unwrap();
+                }
             }
         }
         i += 1;
