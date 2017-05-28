@@ -9,4 +9,5 @@ crate-type = ["staticlib"]
 [dependencies]
 libc = '0.1'
 time = '0.1'
+uuid = { version = "0.4", features = ["v4"] }
 td-client = '0.2'

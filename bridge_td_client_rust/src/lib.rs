@@ -1,5 +1,6 @@
 extern crate libc;
 extern crate time;
+extern crate uuid;
 extern crate td_client;
 use libc::{c_char, c_void};
 use std::ffi::CStr;
@@ -11,6 +12,7 @@ use td_client::client::*;
 use td_client::model::*;
 use td_client::value::*;
 use td_client::table_import::*;
+use uuid::Uuid;
 
 #[repr(C)]
 pub struct TdQueryState {
@@ -23,6 +25,7 @@ pub struct TdImportState {
     td_client: Client<DefaultRequestExecutor>,
     database: String,
     table: String,
+    uuid: Uuid,
     column_size: usize,
     column_types: Vec<ImportColumnType>,
     column_names: Vec<String>,
@@ -302,6 +305,7 @@ pub extern fn import_begin(
     let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
     let database = convert_str_from_raw_str(raw_database);
     let table = convert_str_from_raw_str(raw_table);
+    let uuid = Uuid::new_v4();
 
     let sliced_raw_coltypes = unsafe {
         std::slice::from_raw_parts(raw_coltypes, column_size)
@@ -327,6 +331,7 @@ pub extern fn import_begin(
     log!(debug_log, "import_begin: endpoint={:?}", endpoint);
     log!(debug_log, "import_begin: database={:?}", database);
     log!(debug_log, "import_begin: table={:?}", table);
+    log!(debug_log, "import_begin: uuid={:?}", uuid);
     log!(debug_log, "import_begin: column_size={:?}", column_size);
     log!(debug_log, "import_begin: column_types={:?}", column_types);
     log!(debug_log, "import_begin: colmun_names={:?}", column_names);
@@ -343,6 +348,7 @@ pub extern fn import_begin(
         td_client: client,
         database: database.to_string(),
         table: table.to_string(),
+        uuid: uuid,
         column_size: column_size,
         column_types: column_types,
         column_names: column_names,
@@ -446,6 +452,7 @@ pub extern fn import_commit(
     log!(debug_log, "import_commit: start");
 
     let import_state = unsafe { &mut *td_import_state };
+    let uuid = &import_state.uuid;
     let mut writable_chunk = TableImportWritableChunk::new().unwrap();
     let ref mut orig_writable_chunk = import_state.writable_chunk;
     std::mem::swap(&mut writable_chunk, orig_writable_chunk);
@@ -456,7 +463,7 @@ pub extern fn import_commit(
             let result = client.import_msgpack_gz_file_to_table(
                 import_state.database.as_str(),
                 import_state.table.as_str(),
-                readable_chunk.file_path.as_str(), None);
+                readable_chunk.file_path.as_str(), Some(uuid.simple().to_string().as_str()));
             if result.is_err() {
                 drop(readable_chunk);
                 unsafe { Box::from_raw(td_import_state) };
