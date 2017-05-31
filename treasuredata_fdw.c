@@ -189,9 +189,14 @@ typedef struct TdFdwModifyState
 	AttrNumber	ctidAttno;		/* attnum of input resjunk ctid column */
 	int			p_nums;			/* number of parameters to transmit */
 	FmgrInfo   *p_flinfo;		/* output conversion functions for them */
+    const char **column_types;
+    const char **column_names;
 
 	/* working memory context */
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
+
+	/* Cached catalog information. */
+	ForeignTable *table;
 } TdFdwModifyState;
 
 #if 0
@@ -1168,12 +1173,12 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 	// if (operation == CMD_INSERT || operation == CMD_UPDATE)
 	if (operation == CMD_INSERT)
 	{
-        char **column_types = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
-        char **column_names = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
+        const char **column_types = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
+        const char **column_names = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
         
 		TdFdwOption fdw_option;
-        ForeignTable *table = GetForeignTable(RelationGetRelid(rel));
-		ExtractFdwOptions(table, &fdw_option);
+        fmstate->table = GetForeignTable(RelationGetRelid(rel));
+		ExtractFdwOptions(fmstate->table, &fdw_option);
 
 		/* Set up for remaining transmittable parameters */
 		foreach(lc, fmstate->target_attrs)
@@ -1228,6 +1233,9 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 			fmstate->p_nums++;
 		}
 
+        fmstate->column_types = column_types;
+        fmstate->column_names = column_names;
+
         /* Setup td-client */
         fmstate->td_client = importBegin(
                 fdw_option.apikey,
@@ -1235,8 +1243,8 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
                 fdw_option.database,
                 fdw_option.table,
                 fmstate->p_nums,
-                (const char **) column_types,
-                (const char **) column_names);
+                fmstate->column_types,
+                fmstate->column_names);
     }
     else
     {
@@ -1273,6 +1281,24 @@ treasuredataExecForeignInsert(EState *estate,
     written_len = importAppend(fmstate->td_client, p_values);
 
 	MemoryContextReset(fmstate->temp_cxt);
+
+    if (written_len > 128 * 1024 * 1024) {
+        /* If the written data size gets too large, upload the file and setup td-client agein */
+		TdFdwOption fdw_option;
+
+        importCommit(fmstate->td_client);
+
+		ExtractFdwOptions(fmstate->table, &fdw_option);
+
+        fmstate->td_client = importBegin(
+                fdw_option.apikey,
+                fdw_option.endpoint,
+                fdw_option.database,
+                fdw_option.table,
+                fmstate->p_nums,
+                fmstate->column_types,
+                fmstate->column_names);
+    }
 
     return slot;
 }
