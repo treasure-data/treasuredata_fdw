@@ -26,6 +26,7 @@ pub struct TdImportState {
     database: String,
     table: String,
     uuid: Uuid,
+    approximate_written_size: usize,
     column_size: usize,
     column_types: Vec<ImportColumnType>,
     column_names: Vec<String>,
@@ -349,6 +350,7 @@ pub extern fn import_begin(
         database: database.to_string(),
         table: table.to_string(),
         uuid: uuid,
+        approximate_written_size: 0,
         column_size: column_size,
         column_types: column_types,
         column_names: column_names,
@@ -369,9 +371,9 @@ pub extern fn import_append(
     td_import_state: *mut TdImportState,
     raw_values: *const *const c_char,
     debug_log: extern fn(usize, &[u8]),
-    error_log: extern fn(usize, &[u8])) {
+    error_log: extern fn(usize, &[u8])) -> usize {
 
-    let import_state = unsafe { &mut *td_import_state };
+    let mut import_state = unsafe { &mut *td_import_state };
     let column_size = import_state.column_size;
     let column_types = &import_state.column_types;
     let column_names = &import_state.column_names;
@@ -386,6 +388,10 @@ pub extern fn import_append(
         .iter()
         .map(|x| convert_str_opt_from_raw_str(*x))
         .collect::<Vec<Option<&str>>>();
+
+    let approximate_written_size_of_row = values
+        .iter()
+        .fold(0, |a, x| a + match x { &Some(s) => s.len(), &None => 0 });
 
     let mut i = 0;
     for coltype in column_types {
@@ -441,6 +447,9 @@ pub extern fn import_append(
         }
         i += 1;
     }
+    import_state.approximate_written_size += approximate_written_size_of_row;
+
+    import_state.approximate_written_size
 }
 
 #[no_mangle]

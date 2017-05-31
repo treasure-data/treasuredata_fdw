@@ -33,7 +33,7 @@ extern void *importBegin(
     const char **coltypes,
     const char **colnames);
 
-extern void importAppend(void *import_state, const char **values);
+extern size_t importAppend(void *import_state, const char **values);
 
 extern void importCommit(void *import_state);
 

@@ -79,7 +79,7 @@ extern void *import_begin(
     void (*error_log)(size_t, const char*)
 );
 
-extern void import_append(
+extern size_t import_append(
     void *import_state,
     const char **values,
     void (*debug_log)(size_t, const char *),
@@ -160,9 +160,9 @@ void *importBegin(
             error_log);
 }
 
-void importAppend(void *import_state, const char **values)
+size_t importAppend(void *import_state, const char **values)
 {
-    import_append(
+    return import_append(
             import_state,
             values,
             debug_log,

@@ -1259,6 +1259,7 @@ treasuredataExecForeignInsert(EState *estate,
                               TupleTableSlot *planSlot)
 {
 	TdFdwModifyState *fmstate = (TdFdwModifyState *) resultRelInfo->ri_FdwState;
+    size_t written_len;
 	const char **p_values;
 #if 0
 	int			n_rows;
@@ -1269,7 +1270,7 @@ treasuredataExecForeignInsert(EState *estate,
 
 	/* Convert parameters needed by prepared statement to text form */
 	p_values = convert_prep_stmt_params(fmstate, NULL, slot);
-    importAppend(fmstate->td_client, p_values);
+    written_len = importAppend(fmstate->td_client, p_values);
 
 	MemoryContextReset(fmstate->temp_cxt);
 
