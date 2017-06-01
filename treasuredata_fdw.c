@@ -176,6 +176,7 @@ typedef struct TdFdwModifyState
 
 	/* for remote query execution */
 	void       *td_client;
+    unsigned long import_file_size;
 
 	/* extracted fdw_private data */
 	char	   *query;			/* text of INSERT/UPDATE/DELETE command */
@@ -185,7 +186,7 @@ typedef struct TdFdwModifyState
 	List	   *retrieved_attrs;	/* attr numbers retrieved by RETURNING */
 #endif
 
-	/* info about parameters for prepared statement */
+	/* attribute info */
 	AttrNumber	ctidAttno;		/* attnum of input resjunk ctid column */
 	int			p_nums;			/* number of parameters to transmit */
 	FmgrInfo   *p_flinfo;		/* output conversion functions for them */
@@ -1173,8 +1174,8 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 	// if (operation == CMD_INSERT || operation == CMD_UPDATE)
 	if (operation == CMD_INSERT)
 	{
-        const char **column_types = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
-        const char **column_names = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
+        char **column_types = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
+        char **column_names = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
         
 		TdFdwOption fdw_option;
         fmstate->table = GetForeignTable(RelationGetRelid(rel));
@@ -1233,8 +1234,11 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 			fmstate->p_nums++;
 		}
 
-        fmstate->column_types = column_types;
-        fmstate->column_names = column_names;
+        fmstate->column_types = (const char **) column_types;
+        fmstate->column_names = (const char **) column_names;
+
+        /* Cache the threshold size of split import files */
+        fmstate->import_file_size = fdw_option.import_file_size;
 
         /* Setup td-client */
         fmstate->td_client = importBegin(
@@ -1282,7 +1286,7 @@ treasuredataExecForeignInsert(EState *estate,
 
 	MemoryContextReset(fmstate->temp_cxt);
 
-    if (written_len > 128 * 1024 * 1024) {
+    if (written_len > fmstate->import_file_size) {
         /* If the written data size gets too large, upload the file and setup td-client agein */
 		TdFdwOption fdw_option;
 

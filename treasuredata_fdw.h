@@ -25,6 +25,7 @@ typedef struct TdFdwOption
 	char *apikey;        /* apikey */
 	char *database;      /* database name */
 	char *table;         /* target table name */
+	long import_file_size; /* threshold size to split import files */
 }   TdFdwOption;
 
 /*
