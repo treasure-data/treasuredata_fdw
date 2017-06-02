@@ -10,6 +10,8 @@
  *
  *-------------------------------------------------------------------------
  */
+#include <unistd.h>
+
 #include "postgres.h"
 
 #include "treasuredata_fdw.h"
@@ -176,7 +178,8 @@ typedef struct TdFdwModifyState
 
 	/* for remote query execution */
 	void       *td_client;
-    unsigned long import_file_size;
+    TdFdwOption fdw_option;
+    char       *tmp_table_name; /* used for atomic import */
 
 	/* extracted fdw_private data */
 	char	   *query;			/* text of INSERT/UPDATE/DELETE command */
@@ -1177,9 +1180,8 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
         char **column_types = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
         char **column_names = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
         
-		TdFdwOption fdw_option;
         fmstate->table = GetForeignTable(RelationGetRelid(rel));
-		ExtractFdwOptions(fmstate->table, &fdw_option);
+		ExtractFdwOptions(fmstate->table, &fmstate->fdw_option);
 
 		/* Set up for remaining transmittable parameters */
 		foreach(lc, fmstate->target_attrs)
@@ -1237,15 +1239,24 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
         fmstate->column_types = (const char **) column_types;
         fmstate->column_names = (const char **) column_names;
 
-        /* Cache the threshold size of split import files */
-        fmstate->import_file_size = fdw_option.import_file_size;
+        if (fmstate->fdw_option.atomic_import) {
+            size_t len = strlen(fmstate->fdw_option.table) + 1 + 10 + 1 + 10 + 1;
+            fmstate->tmp_table_name = palloc(len);
+            snprintf(fmstate->tmp_table_name, len,
+                    "%s_%d_%ld", fmstate->fdw_option.table,
+                    getpid(), time(NULL));
+        }
+        else {
+            fmstate->tmp_table_name = NULL;
+        }
 
         /* Setup td-client */
         fmstate->td_client = importBegin(
-                fdw_option.apikey,
-                fdw_option.endpoint,
-                fdw_option.database,
-                fdw_option.table,
+                fmstate->fdw_option.apikey,
+                fmstate->fdw_option.endpoint,
+                fmstate->fdw_option.database,
+                fmstate->fdw_option.atomic_import ?
+                    fmstate->tmp_table_name : fmstate->fdw_option.table,
                 fmstate->p_nums,
                 fmstate->column_types,
                 fmstate->column_names);
@@ -1286,19 +1297,16 @@ treasuredataExecForeignInsert(EState *estate,
 
 	MemoryContextReset(fmstate->temp_cxt);
 
-    if (written_len > fmstate->import_file_size) {
+    if (written_len > fmstate->fdw_option.import_file_size) {
         /* If the written data size gets too large, upload the file and setup td-client agein */
-		TdFdwOption fdw_option;
-
         importCommit(fmstate->td_client);
 
-		ExtractFdwOptions(fmstate->table, &fdw_option);
-
         fmstate->td_client = importBegin(
-                fdw_option.apikey,
-                fdw_option.endpoint,
-                fdw_option.database,
-                fdw_option.table,
+                fmstate->fdw_option.apikey,
+                fmstate->fdw_option.endpoint,
+                fmstate->fdw_option.database,
+                fmstate->fdw_option.atomic_import ?
+                    fmstate->tmp_table_name : fmstate->fdw_option.table,
                 fmstate->p_nums,
                 fmstate->column_types,
                 fmstate->column_names);

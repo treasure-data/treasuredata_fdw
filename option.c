@@ -44,6 +44,7 @@ static const struct PgFdwOption valid_options[] =
 	{"database", ForeignTableRelationId},
 	{"table", ForeignTableRelationId},
 	{"import_file_size", ForeignTableRelationId},
+	{"atomic_import", ForeignTableRelationId},
 
 	/* Sentinel */
 	{NULL, InvalidOid}
@@ -89,6 +90,22 @@ validate_option(DefElem *def, Oid context)
 	}
 }
 
+static int my_strcasecmp(const char *s1, const char *s2)
+{
+    const unsigned char *p1 = (const unsigned char *) s1;
+    const unsigned char *p2 = (const unsigned char *) s2;
+    int result;
+
+    if (p1 == p2)
+        return 0;
+
+    while ((result = tolower(*p1) - tolower(*p2++)) == 0)
+        if (*p1++ == '\0')
+            break;
+
+    return result;
+}
+
 Datum
 treasuredata_fdw_validator(PG_FUNCTION_ARGS)
 {
@@ -101,6 +118,7 @@ treasuredata_fdw_validator(PG_FUNCTION_ARGS)
 	char       *table = NULL;
 	char       *query = NULL;
 	char       *import_file_size = NULL;
+	char       *atomic_import = NULL;
 	ListCell   *cell;
 
 	/*
@@ -197,6 +215,21 @@ treasuredata_fdw_validator(PG_FUNCTION_ARGS)
 
             import_file_size = (char *) nptr;
 		}
+		else if (strcmp(def->defname, "atomic_import") == 0)
+		{
+			if (atomic_import)
+				ereport(ERROR,
+				        (errcode(ERRCODE_SYNTAX_ERROR),
+				         errmsg("conflicting or redundant options")));
+
+			atomic_import = defGetString(def);
+            if (my_strcasecmp(atomic_import, "true") != 0 &&
+                my_strcasecmp(atomic_import, "false") != 0) {
+				ereport(ERROR,
+				        (errcode(ERRCODE_SYNTAX_ERROR),
+				         errmsg("'atomic_import' should be boolean")));
+            }
+		}
 	}
 
 	if (catalog == ForeignTableRelationId)
@@ -248,6 +281,7 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 	fdw_option->database = NULL;
 	fdw_option->table = NULL;
 	fdw_option->import_file_size = 128 * 1024 * 1024;
+	fdw_option->atomic_import = false;
 
 	foreach(cell, options)
 	{
@@ -284,6 +318,18 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
                 fdw_option->import_file_size = size;
             }
 		}
+		else if (strcmp(def->defname, "atomic_import") == 0)
+		{
+            if (my_strcasecmp(defGetString(def), "true") == 0) {
+                fdw_option->atomic_import = true;
+            }
+            else if (my_strcasecmp(defGetString(def), "false") == 0) {
+                fdw_option->atomic_import = false;
+            }
+            else {
+                elog(ERROR, "treasuredata_fdw: atomic_import should be boolean");
+            }
+		}
 	}
 
 	/*
@@ -306,11 +352,12 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 		elog(ERROR, "treasuredata_fdw: table is required for treasuredata_fdw foreign tables");
 	}
 
-	elog(DEBUG1, "treasuredata_fdw: endpoint=%s, query_engine=%s, apikey.len=%ld, database=%s, table=%s, import_file_size=%ld",
+	elog(DEBUG1, "treasuredata_fdw: endpoint=%s, query_engine=%s, apikey.len=%ld, database=%s, table=%s, import_file_size=%ld, atomic_import=%d",
 	     fdw_option->endpoint,
 	     fdw_option->query_engine,
 	     strlen(fdw_option->apikey),
 	     fdw_option->database,
 	     fdw_option->table,
-         fdw_option->import_file_size);
+         fdw_option->import_file_size,
+         fdw_option->atomic_import);
 }
