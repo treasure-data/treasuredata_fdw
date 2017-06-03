@@ -24,6 +24,12 @@ extern int fetchResultRow(
 
 extern void releaseResource(void *td_query_state);
 
+extern void createTable(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table);
+
 extern void *importBegin(
     const char *apikey,
     const char *endpoint,

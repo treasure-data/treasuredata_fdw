@@ -67,6 +67,15 @@ extern bool fetch_result_row(
 
 extern void release_resource(void *td_query_state);
 
+extern void *create_table(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    void (*debug_log)(size_t, const char*),
+    void (*error_log)(size_t, const char*)
+);
+
 extern void *import_begin(
     const char *apikey,
     const char *endpoint,
@@ -137,6 +146,21 @@ int fetchResultRow(void *td_query_state, int natts, char **values)
 void releaseResource(void *td_query_state)
 {
 	release_resource(td_query_state);
+}
+
+void createTable(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table)
+{
+    create_table(
+            apikey,
+            endpoint,
+            database,
+            table,
+            debug_log,
+            error_log);
 }
 
 void *importBegin(

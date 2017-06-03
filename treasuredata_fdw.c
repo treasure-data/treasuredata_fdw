@@ -1245,6 +1245,13 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
             snprintf(fmstate->tmp_table_name, len,
                     "%s_%d_%ld", fmstate->fdw_option.table,
                     getpid(), time(NULL));
+
+            /* Create a temp table */
+            createTable(
+                fmstate->fdw_option.apikey,
+                fmstate->fdw_option.endpoint,
+                fmstate->fdw_option.database,
+                fmstate->tmp_table_name);
         }
         else {
             fmstate->tmp_table_name = NULL;

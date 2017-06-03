@@ -7,6 +7,7 @@ authors = ["Mitsunori Komatsu <komamitsu@gmail.com>"]
 crate-type = ["staticlib"]
 
 [dependencies]
+hyper = '0.10'
 libc = '0.1'
 time = '0.1'
 uuid = { version = "0.4", features = ["v4"] }

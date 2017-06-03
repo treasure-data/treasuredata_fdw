@@ -1,3 +1,4 @@
+extern crate hyper;
 extern crate libc;
 extern crate time;
 extern crate uuid;
@@ -9,6 +10,7 @@ use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, RecvError};
 use std::thread;
 use td_client::client::*;
+use td_client::error::*;
 use td_client::model::*;
 use td_client::value::*;
 use td_client::table_import::*;
@@ -112,7 +114,7 @@ pub extern fn issue_query(
     let database = convert_str_from_raw_str(raw_database);
     let query = convert_str_from_raw_str(raw_query);
 
-    log!(debug_log, "issue_query: start");
+    log!(debug_log, "issue_query: entering");
     log!(debug_log, "issue_query: apikey.len={:?}", apikey.len());
     log!(debug_log, "issue_query: endpoint={:?}", endpoint);
     log!(debug_log, "issue_query: query_engine={:?}", query_engine);
@@ -190,7 +192,7 @@ pub extern fn issue_query(
 
     let td_query_state = Box::into_raw(Box::new(query_state));
 
-    log!(debug_log, "issue_query: finished");
+    log!(debug_log, "issue_query: exiting");
 
     td_query_state
 }
@@ -288,6 +290,42 @@ pub extern fn fetch_result_row(
 }
 
 #[no_mangle]
+pub extern fn create_table(
+    raw_apikey: *const c_char,
+    raw_endpoint: *const c_char,
+    raw_database: *const c_char,
+    raw_table: *const c_char,
+    debug_log: extern fn(usize, &[u8]),
+    error_log: extern fn(usize, &[u8])) {
+
+    let apikey = convert_str_from_raw_str(raw_apikey);
+    let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
+    let database = convert_str_from_raw_str(raw_database);
+    let table = convert_str_from_raw_str(raw_table);
+
+    log!(debug_log, "create_table: entering");
+    log!(debug_log, "create_table: apikey.len={:?}", apikey.len());
+    log!(debug_log, "create_table: endpoint={:?}", endpoint);
+    log!(debug_log, "create_table: database={:?}", database);
+    log!(debug_log, "create_table: table={:?}", table);
+
+    let client = create_client(apikey, &endpoint);
+
+    match client.create_table(database, table) {
+        Ok(()) => (),
+        Err(err) => match err {
+            TreasureDataError::ApiError(status_code, _) => match status_code {
+                ::hyper::status::StatusCode::Conflict => (),
+                _ => log!(error_log, "create_table: {:?}", err)
+            },
+            _ => log!(error_log, "create_table: {:?}", err)
+        }
+    }
+
+    log!(debug_log, "create_table: exiting");
+}
+
+#[no_mangle]
 pub extern fn import_begin(
     raw_apikey: *const c_char,
     raw_endpoint: *const c_char,
@@ -300,7 +338,7 @@ pub extern fn import_begin(
     error_log: extern fn(usize, &[u8])
     ) -> *mut TdImportState {
 
-    log!(debug_log, "import_begin: start");
+    log!(debug_log, "import_begin: entering");
 
     let apikey = convert_str_from_raw_str(raw_apikey);
     let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
@@ -360,7 +398,7 @@ pub extern fn import_begin(
 
     let td_import_state = Box::into_raw(Box::new(import_state));
 
-    log!(debug_log, "import_begin: finished");
+    log!(debug_log, "import_begin: exiting");
 
     td_import_state
 }
@@ -458,7 +496,7 @@ pub extern fn import_commit(
     debug_log: extern fn(usize, &[u8]),
     error_log: extern fn(usize, &[u8])) {
 
-    log!(debug_log, "import_commit: start");
+    log!(debug_log, "import_commit: entering");
 
     let import_state = unsafe { &mut *td_import_state };
     let uuid = &import_state.uuid;
@@ -487,7 +525,7 @@ pub extern fn import_commit(
 
     unsafe { Box::from_raw(td_import_state) };
 
-    log!(debug_log, "import_commit: finished");
+    log!(debug_log, "import_commit: exiting");
 }
 
 #[no_mangle]

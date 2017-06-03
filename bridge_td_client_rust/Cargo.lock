@@ -2,6 +2,7 @@
 name = "bridge_td_client"
 version = "0.1.0"
 dependencies = [
+ "hyper 0.10.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "td-client 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "time 0.1.37 (registry+https://github.com/rust-lang/crates.io-index)",
