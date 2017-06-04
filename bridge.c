@@ -76,6 +76,15 @@ extern void *create_table(
     void (*error_log)(size_t, const char*)
 );
 
+extern void *delete_table(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    void (*debug_log)(size_t, const char*),
+    void (*error_log)(size_t, const char*)
+);
+
 extern void *import_begin(
     const char *apikey,
     const char *endpoint,
@@ -155,6 +164,21 @@ void createTable(
     const char *table)
 {
     create_table(
+            apikey,
+            endpoint,
+            database,
+            table,
+            debug_log,
+            error_log);
+}
+
+void deleteTable(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table)
+{
+    delete_table(
             apikey,
             endpoint,
             database,

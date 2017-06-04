@@ -1246,7 +1246,6 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
                     "%s_%d_%ld", fmstate->fdw_option.table,
                     getpid(), time(NULL));
 
-            /* Create a temp table */
             createTable(
                 fmstate->fdw_option.apikey,
                 fmstate->fdw_option.endpoint,
@@ -1480,6 +1479,14 @@ treasuredataEndForeignModify(EState *estate,
 
     // Upload the chunk file to Treasure Data
     importCommit(fmstate->td_client);
+
+    if (fmstate->fdw_option.atomic_import) {
+        deleteTable(
+                fmstate->fdw_option.apikey,
+                fmstate->fdw_option.endpoint,
+                fmstate->fdw_option.database,
+                fmstate->tmp_table_name);
+    }
 
 	fmstate->td_client = NULL;
 }

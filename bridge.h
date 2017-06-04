@@ -30,6 +30,12 @@ extern void createTable(
     const char *database,
     const char *table);
 
+extern void deleteTable(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table);
+
 extern void *importBegin(
     const char *apikey,
     const char *endpoint,

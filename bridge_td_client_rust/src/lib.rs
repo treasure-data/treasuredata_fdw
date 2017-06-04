@@ -326,6 +326,42 @@ pub extern fn create_table(
 }
 
 #[no_mangle]
+pub extern fn delete_table(
+    raw_apikey: *const c_char,
+    raw_endpoint: *const c_char,
+    raw_database: *const c_char,
+    raw_table: *const c_char,
+    debug_log: extern fn(usize, &[u8]),
+    error_log: extern fn(usize, &[u8])) {
+
+    let apikey = convert_str_from_raw_str(raw_apikey);
+    let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
+    let database = convert_str_from_raw_str(raw_database);
+    let table = convert_str_from_raw_str(raw_table);
+
+    log!(debug_log, "delete_table: entering");
+    log!(debug_log, "delete_table: apikey.len={:?}", apikey.len());
+    log!(debug_log, "delete_table: endpoint={:?}", endpoint);
+    log!(debug_log, "delete_table: database={:?}", database);
+    log!(debug_log, "delete_table: table={:?}", table);
+
+    let client = create_client(apikey, &endpoint);
+
+    match client.delete_table(database, table) {
+        Ok(()) => (),
+        Err(err) => match err {
+            TreasureDataError::ApiError(status_code, _) => match status_code {
+                ::hyper::status::StatusCode::NotFound => (),
+                _ => log!(error_log, "delete_table: {:?}", err)
+            },
+            _ => log!(error_log, "delete_table: {:?}", err)
+        }
+    }
+
+    log!(debug_log, "delete_table: exiting");
+}
+
+#[no_mangle]
 pub extern fn import_begin(
     raw_apikey: *const c_char,
     raw_endpoint: *const c_char,
