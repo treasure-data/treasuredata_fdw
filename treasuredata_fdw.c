@@ -1481,6 +1481,41 @@ treasuredataEndForeignModify(EState *estate,
     importCommit(fmstate->td_client);
 
     if (fmstate->fdw_option.atomic_import) {
+        StringInfoData sql;
+
+        /* Move imported data from the temp table to the target table with INSERT INTO */
+        initStringInfo(&sql);
+        if (strcmp(fmstate->fdw_option.query_engine, "hive") == 0) {
+            int i;
+            appendStringInfoString(&sql, "INSERT INTO ");
+            appendStringInfoString(&sql, "TABLE ");
+            appendStringInfoString(&sql, fmstate->fdw_option.table);
+            appendStringInfoString(&sql, " SELECT ");
+            for (i = 0; i < fmstate->p_nums; i++) {
+                if (i != 0) {
+                    appendStringInfoString(&sql, ", ");
+                }
+                appendStringInfoString(&sql, "`");
+                appendStringInfoString(&sql, fmstate->column_names[i]);
+                appendStringInfoString(&sql, "`");
+            }
+            appendStringInfoString(&sql, " FROM ");
+            appendStringInfoString(&sql, fmstate->tmp_table_name);
+        }
+        else if (strcmp(fmstate->fdw_option.query_engine, "presto") == 0) {
+            appendStringInfoString(&sql, "INSERT INTO ");
+            appendStringInfoString(&sql, fmstate->fdw_option.table);
+            appendStringInfoString(&sql, " SELECT * FROM ");
+            appendStringInfoString(&sql, fmstate->tmp_table_name);
+        }
+
+        issueQuery(
+                fmstate->fdw_option.apikey,
+                fmstate->fdw_option.endpoint,
+                fmstate->fdw_option.query_engine,
+                fmstate->fdw_option.database,
+                sql.data);
+
         deleteTable(
                 fmstate->fdw_option.apikey,
                 fmstate->fdw_option.endpoint,
