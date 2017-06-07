@@ -76,6 +76,17 @@ extern void *create_table(
     void (*error_log)(size_t, const char*)
 );
 
+extern void *copy_table_schema(
+    const char *apikey,
+    const char *endpoint,
+    const char *src_database,
+    const char *src_table,
+    const char *dst_database,
+    const char *dst_table,
+    void (*debug_log)(size_t, const char*),
+    void (*error_log)(size_t, const char*)
+);
+
 extern void *delete_table(
     const char *apikey,
     const char *endpoint,
@@ -168,6 +179,25 @@ void createTable(
             endpoint,
             database,
             table,
+            debug_log,
+            error_log);
+}
+
+void copyTableSchema(
+    const char *apikey,
+    const char *endpoint,
+    const char *src_database,
+    const char *src_table,
+    const char *dst_database,
+    const char *dst_table)
+{
+    copy_table_schema(
+            apikey,
+            endpoint,
+            src_database,
+            src_table,
+            dst_database,
+            dst_table,
             debug_log,
             error_log);
 }

@@ -326,6 +326,42 @@ pub extern fn create_table(
 }
 
 #[no_mangle]
+pub extern fn copy_table_schema(
+    raw_apikey: *const c_char,
+    raw_endpoint: *const c_char,
+    raw_src_database: *const c_char,
+    raw_src_table: *const c_char,
+    raw_dst_database: *const c_char,
+    raw_dst_table: *const c_char,
+    debug_log: extern fn(usize, &[u8]),
+    error_log: extern fn(usize, &[u8])) {
+
+    let apikey = convert_str_from_raw_str(raw_apikey);
+    let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
+    let src_database = convert_str_from_raw_str(raw_src_database);
+    let src_table = convert_str_from_raw_str(raw_src_table);
+    let dst_database = convert_str_from_raw_str(raw_dst_database);
+    let dst_table = convert_str_from_raw_str(raw_dst_table);
+
+    log!(debug_log, "copy_table_schema: entering");
+    log!(debug_log, "copy_table_schema: apikey.len={:?}", apikey.len());
+    log!(debug_log, "copy_table_schema: endpoint={:?}", endpoint);
+    log!(debug_log, "copy_table_schema: src_database={:?}", src_database);
+    log!(debug_log, "copy_table_schema: src_table={:?}", src_table);
+    log!(debug_log, "copy_table_schema: dst_database={:?}", dst_database);
+    log!(debug_log, "copy_table_schema: dst_table={:?}", dst_table);
+
+    let client = create_client(apikey, &endpoint);
+
+    match client.copy_table_schema(src_database, src_table, dst_database, dst_table) {
+        Ok(()) => (),
+        Err(err) => log!(error_log, "copy_table_schema: {:?}", err)
+    }
+
+    log!(debug_log, "copy_table_schema: exiting");
+}
+
+#[no_mangle]
 pub extern fn delete_table(
     raw_apikey: *const c_char,
     raw_endpoint: *const c_char,

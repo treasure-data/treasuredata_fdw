@@ -30,6 +30,14 @@ extern void createTable(
     const char *database,
     const char *table);
 
+extern void copyTableSchema(
+    const char *apikey,
+    const char *endpoint,
+    const char *src_database,
+    const char *src_table,
+    const char *dst_database,
+    const char *dst_table);
+
 extern void deleteTable(
     const char *apikey,
     const char *endpoint,

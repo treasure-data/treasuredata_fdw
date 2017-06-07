@@ -1483,6 +1483,15 @@ treasuredataEndForeignModify(EState *estate,
     if (fmstate->fdw_option.atomic_import) {
         StringInfoData sql;
 
+        /* Copy schema of the target table to the temp table to make the following INSERT INTO be successful */
+        copyTableSchema(
+                fmstate->fdw_option.apikey,
+                fmstate->fdw_option.endpoint,
+                fmstate->fdw_option.database,
+                fmstate->fdw_option.table,
+                fmstate->fdw_option.database,
+                fmstate->tmp_table_name);
+
         /* Move imported data from the temp table to the target table with INSERT INTO */
         initStringInfo(&sql);
         if (strcmp(fmstate->fdw_option.query_engine, "hive") == 0) {
