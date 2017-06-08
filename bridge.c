@@ -115,6 +115,12 @@ extern size_t import_append(
     void (*error_log)(size_t, const char *)
 );
 
+extern void import_append_table_schema(
+    void *import_state,
+    void (*debug_log)(size_t, const char *),
+    void (*error_log)(size_t, const char *)
+);
+
 extern void import_commit(
     void *import_state,
     void (*debug_log)(size_t, const char *),
@@ -243,6 +249,14 @@ size_t importAppend(void *import_state, const char **values)
     return import_append(
             import_state,
             values,
+            debug_log,
+            error_log);
+}
+
+void importAppendTableSchema(void *import_state)
+{
+    import_append_table_schema(
+            import_state,
             debug_log,
             error_log);
 }

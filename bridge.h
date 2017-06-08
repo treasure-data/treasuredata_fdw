@@ -57,5 +57,7 @@ extern size_t importAppend(void *import_state, const char **values);
 
 extern void importCommit(void *import_state);
 
+extern void importAppendTableSchema(void *import_state);
+
 #endif   /* TREASUREDATA_FDW_BRIDGE_H */
 

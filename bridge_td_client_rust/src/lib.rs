@@ -563,6 +563,57 @@ pub extern fn import_append(
 }
 
 #[no_mangle]
+pub extern fn import_append_table_schema(
+    td_import_state: *mut TdImportState,
+    debug_log: extern fn(usize, &[u8]),
+    error_log: extern fn(usize, &[u8])) {
+
+    let import_state = unsafe { &mut *td_import_state };
+    let client = &import_state.td_client;
+    let database = &import_state.database;
+    let table = &import_state.table;
+    let column_size = import_state.column_size;
+    let column_types = &import_state.column_types;
+    let column_names = &import_state.column_names;
+
+    log!(debug_log, "import_append_table_schema: entering");
+    log!(debug_log, "import_append_table_schema: database={:?}", database);
+    log!(debug_log, "import_append_table_schema: table={:?}", table);
+
+    let mut schema_types = Vec::new();
+    for i in 0..column_size {
+        let column_name = &column_names[i];
+        if column_name == "time" {
+            continue;
+        }
+        let schema_type = match column_types[i] {
+            ImportColumnType::Int => SchemaType::Long,
+            ImportColumnType::Float => SchemaType::Double,
+            ImportColumnType::String => SchemaType::String,
+            ImportColumnType::Bytes => SchemaType::String,
+            ImportColumnType::Map => {
+                log!(error_log, "import_append_table_schema: MAP type isn't supported yet");
+                return
+            },
+            ImportColumnType::Array => {
+                log!(error_log, "import_append_table_schema: ARRAY type isn't supported yet");
+                return
+            }
+        };
+        schema_types.push((column_name.as_str(), schema_type));
+    }
+
+    log!(debug_log, "import_append_table_schema: schema_types={:?}", schema_types);
+
+    match client.append_schema(database, table, schema_types) {
+        Ok(()) => (),
+        Err(err) => log!(error_log, "import_append_table_schema: {:?}", err)
+    }
+
+    log!(debug_log, "import_append_table_schema: exiting");
+}
+
+#[no_mangle]
 pub extern fn import_commit(
     td_import_state: *mut TdImportState,
     debug_log: extern fn(usize, &[u8]),
@@ -595,7 +646,8 @@ pub extern fn import_commit(
         },
     };
 
-    unsafe { Box::from_raw(td_import_state) };
+    // FIXME: Release this object in another function
+    // unsafe { Box::from_raw(td_import_state) };
 
     log!(debug_log, "import_commit: exiting");
 }
