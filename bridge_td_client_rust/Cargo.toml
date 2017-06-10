@@ -11,4 +11,4 @@ hyper = '0.10'
 libc = '0.1'
 time = '0.1'
 uuid = { version = "0.4", features = ["v4"] }
-td-client = '0.2.3'
+td-client = '0.3'

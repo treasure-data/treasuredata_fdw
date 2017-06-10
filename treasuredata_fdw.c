@@ -909,7 +909,7 @@ treasuredataEndForeignScan(ForeignScanState *node)
 	if (fsstate == NULL)
 		return;
 
-	releaseResource(fsstate->td_client);
+	releaseQueryResource(fsstate->td_client);
 
 	fsstate->td_client = NULL;
 
@@ -1306,6 +1306,7 @@ treasuredataExecForeignInsert(EState *estate,
     if (written_len > fmstate->fdw_option.import_file_size) {
         /* If the written data size gets too large, upload the file and setup td-client agein */
         importCommit(fmstate->td_client);
+        releaseImportResource(fmstate->td_client);
 
         fmstate->td_client = importBegin(
                 fmstate->fdw_option.apikey,
@@ -1525,6 +1526,8 @@ treasuredataEndForeignModify(EState *estate,
                 fmstate->fdw_option.database,
                 fmstate->tmp_table_name);
     }
+
+    releaseImportResource(fmstate->td_client);
 
 	fmstate->td_client = NULL;
 }

@@ -398,6 +398,13 @@ pub extern fn delete_table(
 }
 
 #[no_mangle]
+pub extern fn release_query_resource(td_query_state: *mut TdQueryState) {
+    unsafe {
+        Box::from_raw(td_query_state);
+    }
+}
+
+#[no_mangle]
 pub extern fn import_begin(
     raw_apikey: *const c_char,
     raw_endpoint: *const c_char,
@@ -646,16 +653,13 @@ pub extern fn import_commit(
         },
     };
 
-    // FIXME: Release this object in another function
-    // unsafe { Box::from_raw(td_import_state) };
-
     log!(debug_log, "import_commit: exiting");
 }
 
 #[no_mangle]
-pub extern fn release_resource(td_query_state: *mut TdQueryState) {
+pub extern fn release_import_resource(td_import_state: *mut TdImportState) {
     unsafe {
-        Box::from_raw(td_query_state);
+        Box::from_raw(td_import_state);
     }
 }
 
