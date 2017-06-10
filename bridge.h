@@ -38,6 +38,15 @@ extern void copyTableSchema(
     const char *dst_database,
     const char *dst_table);
 
+extern void appendTableSchema(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames);
+
 extern void deleteTable(
     const char *apikey,
     const char *endpoint,
@@ -56,8 +65,6 @@ extern void *importBegin(
 extern size_t importAppend(void *import_state, const char **values);
 
 extern void importCommit(void *import_state);
-
-extern void importAppendTableSchema(void *import_state);
 
 extern void releaseImportResource(void *td_import_state);
 

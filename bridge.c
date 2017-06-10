@@ -67,7 +67,7 @@ extern bool fetch_result_row(
 
 extern void release_query_resource(void *td_query_state);
 
-extern void *create_table(
+extern void create_table(
     const char *apikey,
     const char *endpoint,
     const char *database,
@@ -76,7 +76,7 @@ extern void *create_table(
     void (*error_log)(size_t, const char*)
 );
 
-extern void *copy_table_schema(
+extern void copy_table_schema(
     const char *apikey,
     const char *endpoint,
     const char *src_database,
@@ -87,7 +87,19 @@ extern void *copy_table_schema(
     void (*error_log)(size_t, const char*)
 );
 
-extern void *delete_table(
+extern void append_table_schema(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames,
+    void (*debug_log)(size_t, const char *),
+    void (*error_log)(size_t, const char *)
+);
+
+extern void delete_table(
     const char *apikey,
     const char *endpoint,
     const char *database,
@@ -111,12 +123,6 @@ extern void *import_begin(
 extern size_t import_append(
     void *import_state,
     const char **values,
-    void (*debug_log)(size_t, const char *),
-    void (*error_log)(size_t, const char *)
-);
-
-extern void import_append_table_schema(
-    void *import_state,
     void (*debug_log)(size_t, const char *),
     void (*error_log)(size_t, const char *)
 );
@@ -210,6 +216,27 @@ void copyTableSchema(
 	    error_log);
 }
 
+void appendTableSchema(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames)
+{
+	append_table_schema(
+	    apikey,
+	    endpoint,
+	    database,
+	    table,
+	    column_size,
+	    coltypes,
+	    colnames,
+	    debug_log,
+	    error_log);
+}
+
 void deleteTable(
     const char *apikey,
     const char *endpoint,
@@ -253,14 +280,6 @@ size_t importAppend(void *import_state, const char **values)
 	           values,
 	           debug_log,
 	           error_log);
-}
-
-void importAppendTableSchema(void *import_state)
-{
-	import_append_table_schema(
-	    import_state,
-	    debug_log,
-	    error_log);
 }
 
 void importCommit(void *import_state)

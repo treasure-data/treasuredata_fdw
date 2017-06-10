@@ -362,6 +362,75 @@ pub extern fn copy_table_schema(
 }
 
 #[no_mangle]
+pub extern fn append_table_schema(
+    raw_apikey: *const c_char,
+    raw_endpoint: *const c_char,
+    raw_database: *const c_char,
+    raw_table: *const c_char,
+    column_size: usize,
+    raw_coltypes: *const *const c_char,
+    raw_colnames: *const *const c_char,
+    debug_log: extern fn(usize, &[u8]),
+    error_log: extern fn(usize, &[u8])
+    ) {
+
+    log!(debug_log, "append_table_schema: entering");
+
+    let apikey = convert_str_from_raw_str(raw_apikey);
+    let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
+    let database = convert_str_from_raw_str(raw_database);
+    let table = convert_str_from_raw_str(raw_table);
+
+    let column_types =
+        convert_column_types_from_raw_c_char_array(column_size, raw_coltypes);
+
+    let column_names =
+        convert_column_names_from_raw_c_char_array(column_size, raw_colnames);
+
+    log!(debug_log, "append_table_schema: apikey.len={:?}", apikey.len());
+    log!(debug_log, "append_table_schema: endpoint={:?}", endpoint);
+    log!(debug_log, "append_table_schema: database={:?}", database);
+    log!(debug_log, "append_table_schema: table={:?}", table);
+    log!(debug_log, "append_table_schema: column_size={:?}", column_size);
+    log!(debug_log, "append_table_schema: column_types={:?}", column_types);
+    log!(debug_log, "append_table_schema: colmun_names={:?}", column_names);
+
+    let client = create_client(apikey, &endpoint);
+
+    let mut schema_types = Vec::new();
+    for i in 0..column_size {
+        let column_name = &column_names[i];
+        if column_name == "time" {
+            continue;
+        }
+        let schema_type = match column_types[i] {
+            ImportColumnType::Int => SchemaType::Long,
+            ImportColumnType::Float => SchemaType::Double,
+            ImportColumnType::String => SchemaType::String,
+            ImportColumnType::Bytes => SchemaType::String,
+            ImportColumnType::Map => {
+                log!(error_log, "import_append_table_schema: MAP type isn't supported yet");
+                return
+            },
+            ImportColumnType::Array => {
+                log!(error_log, "import_append_table_schema: ARRAY type isn't supported yet");
+                return
+            }
+        };
+        schema_types.push((column_name.as_str(), schema_type));
+    }
+
+    log!(debug_log, "append_table_schema: schema_types={:?}", schema_types);
+
+    match client.append_schema(database, table, schema_types) {
+        Ok(()) => (),
+        Err(err) => log!(error_log, "append_table_schema: {:?}", err)
+    }
+
+    log!(debug_log, "append_table_schema: exiting");
+}
+
+#[no_mangle]
 pub extern fn delete_table(
     raw_apikey: *const c_char,
     raw_endpoint: *const c_char,
@@ -404,6 +473,38 @@ pub extern fn release_query_resource(td_query_state: *mut TdQueryState) {
     }
 }
 
+fn convert_column_types_from_raw_c_char_array(
+    column_size: usize,
+    raw_column_types: *const *const c_char) -> Vec<ImportColumnType> {
+
+    let sliced_raw_coltypes = unsafe {
+        std::slice::from_raw_parts(raw_column_types, column_size)
+    };
+
+    sliced_raw_coltypes
+        .iter()
+        .map(|x| 
+             ImportColumnType::from(
+                 unsafe { CStr::from_ptr(*x) }
+                 .to_str().unwrap())
+            )
+        .collect::<Vec<ImportColumnType>>()
+}
+
+fn convert_column_names_from_raw_c_char_array(
+    column_size: usize,
+    raw_column_names: *const *const c_char) -> Vec<String> {
+
+    let sliced_raw_colnames = unsafe {
+        std::slice::from_raw_parts(raw_column_names, column_size)
+    };
+
+    sliced_raw_colnames
+        .iter()
+        .map(|x| unsafe { CStr::from_ptr(*x) }.to_str().unwrap().to_string())
+        .collect::<Vec<String>>()
+}
+
 #[no_mangle]
 pub extern fn import_begin(
     raw_apikey: *const c_char,
@@ -425,25 +526,11 @@ pub extern fn import_begin(
     let table = convert_str_from_raw_str(raw_table);
     let uuid = Uuid::new_v4();
 
-    let sliced_raw_coltypes = unsafe {
-        std::slice::from_raw_parts(raw_coltypes, column_size)
-    };
-    let column_types = sliced_raw_coltypes
-        .iter()
-        .map(|x| 
-             ImportColumnType::from(
-                 unsafe { CStr::from_ptr(*x) }
-                 .to_str().unwrap())
-            )
-        .collect::<Vec<ImportColumnType>>();
+    let column_types =
+        convert_column_types_from_raw_c_char_array(column_size, raw_coltypes);
 
-    let sliced_raw_colnames = unsafe {
-        std::slice::from_raw_parts(raw_colnames, column_size)
-    };
-    let column_names = sliced_raw_colnames
-        .iter()
-        .map(|x| unsafe { CStr::from_ptr(*x) }.to_str().unwrap().to_string())
-        .collect::<Vec<String>>();
+    let column_names =
+        convert_column_names_from_raw_c_char_array(column_size, raw_colnames);
 
     log!(debug_log, "import_begin: apikey.len={:?}", apikey.len());
     log!(debug_log, "import_begin: endpoint={:?}", endpoint);
@@ -570,57 +657,6 @@ pub extern fn import_append(
 }
 
 #[no_mangle]
-pub extern fn import_append_table_schema(
-    td_import_state: *mut TdImportState,
-    debug_log: extern fn(usize, &[u8]),
-    error_log: extern fn(usize, &[u8])) {
-
-    let import_state = unsafe { &mut *td_import_state };
-    let client = &import_state.td_client;
-    let database = &import_state.database;
-    let table = &import_state.table;
-    let column_size = import_state.column_size;
-    let column_types = &import_state.column_types;
-    let column_names = &import_state.column_names;
-
-    log!(debug_log, "import_append_table_schema: entering");
-    log!(debug_log, "import_append_table_schema: database={:?}", database);
-    log!(debug_log, "import_append_table_schema: table={:?}", table);
-
-    let mut schema_types = Vec::new();
-    for i in 0..column_size {
-        let column_name = &column_names[i];
-        if column_name == "time" {
-            continue;
-        }
-        let schema_type = match column_types[i] {
-            ImportColumnType::Int => SchemaType::Long,
-            ImportColumnType::Float => SchemaType::Double,
-            ImportColumnType::String => SchemaType::String,
-            ImportColumnType::Bytes => SchemaType::String,
-            ImportColumnType::Map => {
-                log!(error_log, "import_append_table_schema: MAP type isn't supported yet");
-                return
-            },
-            ImportColumnType::Array => {
-                log!(error_log, "import_append_table_schema: ARRAY type isn't supported yet");
-                return
-            }
-        };
-        schema_types.push((column_name.as_str(), schema_type));
-    }
-
-    log!(debug_log, "import_append_table_schema: schema_types={:?}", schema_types);
-
-    match client.append_schema(database, table, schema_types) {
-        Ok(()) => (),
-        Err(err) => log!(error_log, "import_append_table_schema: {:?}", err)
-    }
-
-    log!(debug_log, "import_append_table_schema: exiting");
-}
-
-#[no_mangle]
 pub extern fn import_commit(
     td_import_state: *mut TdImportState,
     debug_log: extern fn(usize, &[u8]),
@@ -643,12 +679,10 @@ pub extern fn import_commit(
                 readable_chunk.file_path.as_str(), Some(uuid.simple().to_string().as_str()));
             if result.is_err() {
                 drop(readable_chunk);
-                unsafe { Box::from_raw(td_import_state) };
                 log!(error_log, "import_commit: Failed to import readable chunk: {:?}", result);
             }
         },
         Err(err) => {
-            unsafe { Box::from_raw(td_import_state) };
             log!(error_log, "import_commit: Failed to close writable chunk: {:?}", err);
         },
     };
@@ -662,4 +696,5 @@ pub extern fn release_import_resource(td_import_state: *mut TdImportState) {
         Box::from_raw(td_import_state);
     }
 }
+
 

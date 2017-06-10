@@ -1314,6 +1314,7 @@ treasuredataExecForeignInsert(EState *estate,
 		/* If the written data size gets too large, upload the file and setup td-client agein */
 		importCommit(fmstate->td_client);
 		releaseImportResource(fmstate->td_client);
+		fmstate->td_client = NULL;
 
 		fmstate->td_client = importBegin(
 		                         fmstate->fdw_option.apikey,
@@ -1487,13 +1488,22 @@ treasuredataEndForeignModify(EState *estate,
 
 	// Upload the chunk file to Treasure Data
 	importCommit(fmstate->td_client);
+	releaseImportResource(fmstate->td_client);
+	fmstate->td_client = NULL;
 
 	if (fmstate->fdw_option.atomic_import)
 	{
 		StringInfoData sql;
 
 		/* Append schema to the temp table to make the following INSERT INTO be successful */
-		importAppendTableSchema(fmstate->td_client);
+		appendTableSchema(
+		    fmstate->fdw_option.apikey,
+		    fmstate->fdw_option.endpoint,
+		    fmstate->fdw_option.database,
+		    fmstate->tmp_table_name,
+		    fmstate->p_nums,
+		    fmstate->column_types,
+		    fmstate->column_names);
 
 		/* Move imported data from the temp table to the target table with INSERT INTO */
 		initStringInfo(&sql);
@@ -1525,6 +1535,7 @@ treasuredataEndForeignModify(EState *estate,
 			appendStringInfoString(&sql, fmstate->tmp_table_name);
 		}
 
+		/* We'd better create `issueUpdate` that doesn't return results and use here */
 		issueQuery(
 		    fmstate->fdw_option.apikey,
 		    fmstate->fdw_option.endpoint,
@@ -1538,10 +1549,6 @@ treasuredataEndForeignModify(EState *estate,
 		    fmstate->fdw_option.database,
 		    fmstate->tmp_table_name);
 	}
-
-	releaseImportResource(fmstate->td_client);
-
-	fmstate->td_client = NULL;
 }
 
 #if 0
