@@ -24,16 +24,16 @@ int main(int argc, char* argv[])
 	char* apikey = NULL;
 	char* database = NULL;
 	char* table = NULL;
-    int colsize = 0;
+	int colsize = 0;
 	char* coltypes = NULL;
 	char* colnames = NULL;
 	char* endpoint = NULL;
-    char** column_types = NULL;
-    char** column_names = NULL;
+	char** column_types = NULL;
+	char** column_names = NULL;
 	void* td_import_state = NULL;
 
-    int i;
-    char* token;
+	int i;
+	char* token;
 
 	if (argc < 7)
 	{
@@ -43,43 +43,45 @@ int main(int argc, char* argv[])
 	apikey = argv[1];
 	database = argv[2];
 	table = argv[3];
-    colsize = atoi(argv[4]);
-    coltypes = argv[5];
-    colnames = argv[6];
+	colsize = atoi(argv[4]);
+	coltypes = argv[5];
+	colnames = argv[6];
 
 	if (argc >= 8)
 	{
 		endpoint = argv[7];
 	}
 
-    column_types = (char **) malloc(sizeof(char *) * colsize);
-    i = 0;
-    token = strtok(coltypes, ",");
-    while (token != NULL) {
-        column_types[i] = malloc(64);
-        strcpy(column_types[i], token);
-        i++;
-        token = strtok(NULL, ",");
-    }
+	column_types = (char **) malloc(sizeof(char *) * colsize);
+	i = 0;
+	token = strtok(coltypes, ",");
+	while (token != NULL)
+	{
+		column_types[i] = malloc(64);
+		strcpy(column_types[i], token);
+		i++;
+		token = strtok(NULL, ",");
+	}
 
-    column_names = (char **) malloc(sizeof(char *) * colsize);
-    i = 0;
-    token = strtok(colnames, ",");
-    while (token != NULL) {
-        column_names[i] = malloc(64);
-        strcpy(column_names[i], token);
-        i++;
-        token = strtok(NULL, ",");
-    }
+	column_names = (char **) malloc(sizeof(char *) * colsize);
+	i = 0;
+	token = strtok(colnames, ",");
+	while (token != NULL)
+	{
+		column_names[i] = malloc(64);
+		strcpy(column_names[i], token);
+		i++;
+		token = strtok(NULL, ",");
+	}
 
-    td_import_state = importBegin(
-            apikey,
-            endpoint,
-            database,
-            table,
-            colsize,
-            column_types,
-            column_names);
+	td_import_state = importBegin(
+	                      apikey,
+	                      endpoint,
+	                      database,
+	                      table,
+	                      colsize,
+	                      column_types,
+	                      column_names);
 
 	if (td_import_state == NULL)
 	{

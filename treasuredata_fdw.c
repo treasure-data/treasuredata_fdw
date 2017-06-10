@@ -178,8 +178,8 @@ typedef struct TdFdwModifyState
 
 	/* for remote query execution */
 	void       *td_client;
-    TdFdwOption fdw_option;
-    char       *tmp_table_name; /* used for atomic import */
+	TdFdwOption fdw_option;
+	char       *tmp_table_name; /* used for atomic import */
 
 	/* extracted fdw_private data */
 	char	   *query;			/* text of INSERT/UPDATE/DELETE command */
@@ -193,8 +193,8 @@ typedef struct TdFdwModifyState
 	AttrNumber	ctidAttno;		/* attnum of input resjunk ctid column */
 	int			p_nums;			/* number of parameters to transmit */
 	FmgrInfo   *p_flinfo;		/* output conversion functions for them */
-    const char **column_types;
-    const char **column_names;
+	const char **column_types;
+	const char **column_names;
 
 	/* working memory context */
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
@@ -525,7 +525,7 @@ treasuredataGetForeignPaths(PlannerInfo *root,
 	 */
 	path = create_foreignscan_path(root, baserel,
 #if PG_VERSION_NUM >= 90600
-                                   NULL,      /* default pathtarget */
+	                               NULL,      /* default pathtarget */
 #endif
 	                               fpinfo->rows,
 	                               fpinfo->startup_cost,
@@ -697,7 +697,7 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 	                        , remote_exprs
 	                        , outer_plan
 #endif
-                            );
+	                       );
 }
 
 /*
@@ -1007,10 +1007,10 @@ treasuredataPlanForeignModify(PlannerInfo *root,
 				targetAttrs = lappend_int(targetAttrs, attnum);
 		}
 	}
-    else
-    {
-        elog(ERROR, "This FDW doesn't support UPDATE/DELETE");
-    }
+	else
+	{
+		elog(ERROR, "This FDW doesn't support UPDATE/DELETE");
+	}
 #if 0
 	else if (operation == CMD_UPDATE)
 	{
@@ -1177,10 +1177,10 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 	// if (operation == CMD_INSERT || operation == CMD_UPDATE)
 	if (operation == CMD_INSERT)
 	{
-        char **column_types = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
-        char **column_names = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
-        
-        fmstate->table = GetForeignTable(RelationGetRelid(rel));
+		char **column_types = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
+		char **column_names = palloc0(sizeof(char *) * list_length(fmstate->target_attrs));
+
+		fmstate->table = GetForeignTable(RelationGetRelid(rel));
 		ExtractFdwOptions(fmstate->table, &fmstate->fdw_option);
 
 		/* Set up for remaining transmittable parameters */
@@ -1194,83 +1194,89 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 			getTypeOutputInfo(attr->atttypid, &typefnoid, &isvarlena);
 			fmgr_info(typefnoid, &fmstate->p_flinfo[fmstate->p_nums]);
 
-            elog(DEBUG1, "attnum=%d, typefnoid=%d, isvarlena=%d, attname=%s, atttypid=%d, p_flinfo.fn_oid=%d",
-                    attnum, typefnoid, isvarlena, NameStr(attr->attname), attr->atttypid, fmstate->p_flinfo[fmstate->p_nums].fn_oid);
+			elog(DEBUG1, "attnum=%d, typefnoid=%d, isvarlena=%d, attname=%s, atttypid=%d, p_flinfo.fn_oid=%d",
+			     attnum, typefnoid, isvarlena, NameStr(attr->attname), attr->atttypid, fmstate->p_flinfo[fmstate->p_nums].fn_oid);
 
-            if (
-                    typefnoid == 39 ||      /* small(int|serial) */
-                    typefnoid == 43 ||      /* (integer|serial) */
-                    typefnoid == 461        /* big(int|serial) */
-            ) {
-                /* Integer */
-                column_types[fmstate->p_nums] = "int";
-            }
-            else if (
-                    typefnoid == 201 ||     /* (float4|real) */
-                    typefnoid == 215 ||     /* (float8|double precision) */
-                    typefnoid == 1702       /* (decimal|numeric) */
-            ) {
-                /* Float */
-                column_types[fmstate->p_nums] = "float";
-            }
-            else if (
-                    typefnoid == 47 ||     /* text */
-                    typefnoid == 1045 ||   /* varchar */
-                    typefnoid == 1047      /* char */
-            ) {
-                /* String */
-                column_types[fmstate->p_nums] = "string";
-            }
-            // TODO: Take care of map type
-            else {
-                elog(ERROR, "Unsupported typefnoid: %d", typefnoid);
-            }
+			if (
+			    typefnoid == 39 ||      /* small(int|serial) */
+			    typefnoid == 43 ||      /* (integer|serial) */
+			    typefnoid == 461        /* big(int|serial) */
+			)
+			{
+				/* Integer */
+				column_types[fmstate->p_nums] = "int";
+			}
+			else if (
+			    typefnoid == 201 ||     /* (float4|real) */
+			    typefnoid == 215 ||     /* (float8|double precision) */
+			    typefnoid == 1702       /* (decimal|numeric) */
+			)
+			{
+				/* Float */
+				column_types[fmstate->p_nums] = "float";
+			}
+			else if (
+			    typefnoid == 47 ||     /* text */
+			    typefnoid == 1045 ||   /* varchar */
+			    typefnoid == 1047      /* char */
+			)
+			{
+				/* String */
+				column_types[fmstate->p_nums] = "string";
+			}
+			// TODO: Take care of map type
+			else
+			{
+				elog(ERROR, "Unsupported typefnoid: %d", typefnoid);
+			}
 
-            {
-                char *attname = NameStr(attr->attname);
-                int len_with_null_char = strlen(attname) + 1;
-                column_names[fmstate->p_nums] = palloc0(len_with_null_char);
-                strncpy(column_names[fmstate->p_nums], attname, len_with_null_char);
-            }
+			{
+				char *attname = NameStr(attr->attname);
+				int len_with_null_char = strlen(attname) + 1;
+				column_names[fmstate->p_nums] = palloc0(len_with_null_char);
+				strncpy(column_names[fmstate->p_nums], attname, len_with_null_char);
+			}
 
 			fmstate->p_nums++;
 		}
 
-        fmstate->column_types = (const char **) column_types;
-        fmstate->column_names = (const char **) column_names;
+		fmstate->column_types = (const char **) column_types;
+		fmstate->column_names = (const char **) column_names;
 
-        if (fmstate->fdw_option.atomic_import) {
-            size_t len = strlen(fmstate->fdw_option.table) + 1 + 10 + 1 + 10 + 1;
-            fmstate->tmp_table_name = palloc(len);
-            snprintf(fmstate->tmp_table_name, len,
-                    "%s_%d_%ld", fmstate->fdw_option.table,
-                    getpid(), time(NULL));
+		if (fmstate->fdw_option.atomic_import)
+		{
+			size_t len = strlen(fmstate->fdw_option.table) + 1 + 10 + 1 + 10 + 1;
+			fmstate->tmp_table_name = palloc(len);
+			snprintf(fmstate->tmp_table_name, len,
+			         "%s_%d_%ld", fmstate->fdw_option.table,
+			         getpid(), time(NULL));
 
-            createTable(
-                fmstate->fdw_option.apikey,
-                fmstate->fdw_option.endpoint,
-                fmstate->fdw_option.database,
-                fmstate->tmp_table_name);
-        }
-        else {
-            fmstate->tmp_table_name = NULL;
-        }
+			createTable(
+			    fmstate->fdw_option.apikey,
+			    fmstate->fdw_option.endpoint,
+			    fmstate->fdw_option.database,
+			    fmstate->tmp_table_name);
+		}
+		else
+		{
+			fmstate->tmp_table_name = NULL;
+		}
 
-        /* Setup td-client */
-        fmstate->td_client = importBegin(
-                fmstate->fdw_option.apikey,
-                fmstate->fdw_option.endpoint,
-                fmstate->fdw_option.database,
-                fmstate->fdw_option.atomic_import ?
-                    fmstate->tmp_table_name : fmstate->fdw_option.table,
-                fmstate->p_nums,
-                fmstate->column_types,
-                fmstate->column_names);
-    }
-    else
-    {
+		/* Setup td-client */
+		fmstate->td_client = importBegin(
+		                         fmstate->fdw_option.apikey,
+		                         fmstate->fdw_option.endpoint,
+		                         fmstate->fdw_option.database,
+		                         fmstate->fdw_option.atomic_import ?
+		                         fmstate->tmp_table_name : fmstate->fdw_option.table,
+		                         fmstate->p_nums,
+		                         fmstate->column_types,
+		                         fmstate->column_names);
+	}
+	else
+	{
 		elog(ERROR, "This FDW doesn't support RETURNING");
-    }
+	}
 
 	Assert(fmstate->p_nums <= n_params);
 
@@ -1288,7 +1294,7 @@ treasuredataExecForeignInsert(EState *estate,
                               TupleTableSlot *planSlot)
 {
 	TdFdwModifyState *fmstate = (TdFdwModifyState *) resultRelInfo->ri_FdwState;
-    size_t written_len;
+	size_t written_len;
 	const char **p_values;
 #if 0
 	int			n_rows;
@@ -1299,27 +1305,28 @@ treasuredataExecForeignInsert(EState *estate,
 
 	/* Convert parameters needed by prepared statement to text form */
 	p_values = convert_prep_stmt_params(fmstate, NULL, slot);
-    written_len = importAppend(fmstate->td_client, p_values);
+	written_len = importAppend(fmstate->td_client, p_values);
 
 	MemoryContextReset(fmstate->temp_cxt);
 
-    if (written_len > fmstate->fdw_option.import_file_size) {
-        /* If the written data size gets too large, upload the file and setup td-client agein */
-        importCommit(fmstate->td_client);
-        releaseImportResource(fmstate->td_client);
+	if (written_len > fmstate->fdw_option.import_file_size)
+	{
+		/* If the written data size gets too large, upload the file and setup td-client agein */
+		importCommit(fmstate->td_client);
+		releaseImportResource(fmstate->td_client);
 
-        fmstate->td_client = importBegin(
-                fmstate->fdw_option.apikey,
-                fmstate->fdw_option.endpoint,
-                fmstate->fdw_option.database,
-                fmstate->fdw_option.atomic_import ?
-                    fmstate->tmp_table_name : fmstate->fdw_option.table,
-                fmstate->p_nums,
-                fmstate->column_types,
-                fmstate->column_names);
-    }
+		fmstate->td_client = importBegin(
+		                         fmstate->fdw_option.apikey,
+		                         fmstate->fdw_option.endpoint,
+		                         fmstate->fdw_option.database,
+		                         fmstate->fdw_option.atomic_import ?
+		                         fmstate->tmp_table_name : fmstate->fdw_option.table,
+		                         fmstate->p_nums,
+		                         fmstate->column_types,
+		                         fmstate->column_names);
+	}
 
-    return slot;
+	return slot;
 }
 
 #if 0
@@ -1478,56 +1485,61 @@ treasuredataEndForeignModify(EState *estate,
 	if (fmstate == NULL)
 		return;
 
-    // Upload the chunk file to Treasure Data
-    importCommit(fmstate->td_client);
+	// Upload the chunk file to Treasure Data
+	importCommit(fmstate->td_client);
 
-    if (fmstate->fdw_option.atomic_import) {
-        StringInfoData sql;
+	if (fmstate->fdw_option.atomic_import)
+	{
+		StringInfoData sql;
 
-        /* Append schema to the temp table to make the following INSERT INTO be successful */
-        importAppendTableSchema(fmstate->td_client);
+		/* Append schema to the temp table to make the following INSERT INTO be successful */
+		importAppendTableSchema(fmstate->td_client);
 
-        /* Move imported data from the temp table to the target table with INSERT INTO */
-        initStringInfo(&sql);
-        if (strcmp(fmstate->fdw_option.query_engine, "hive") == 0) {
-            int i;
-            appendStringInfoString(&sql, "INSERT INTO ");
-            appendStringInfoString(&sql, "TABLE ");
-            appendStringInfoString(&sql, fmstate->fdw_option.table);
-            appendStringInfoString(&sql, " SELECT ");
-            for (i = 0; i < fmstate->p_nums; i++) {
-                if (i != 0) {
-                    appendStringInfoString(&sql, ", ");
-                }
-                appendStringInfoString(&sql, "`");
-                appendStringInfoString(&sql, fmstate->column_names[i]);
-                appendStringInfoString(&sql, "`");
-            }
-            appendStringInfoString(&sql, " FROM ");
-            appendStringInfoString(&sql, fmstate->tmp_table_name);
-        }
-        else if (strcmp(fmstate->fdw_option.query_engine, "presto") == 0) {
-            appendStringInfoString(&sql, "INSERT INTO ");
-            appendStringInfoString(&sql, fmstate->fdw_option.table);
-            appendStringInfoString(&sql, " SELECT * FROM ");
-            appendStringInfoString(&sql, fmstate->tmp_table_name);
-        }
+		/* Move imported data from the temp table to the target table with INSERT INTO */
+		initStringInfo(&sql);
+		if (strcmp(fmstate->fdw_option.query_engine, "hive") == 0)
+		{
+			int i;
+			appendStringInfoString(&sql, "INSERT INTO ");
+			appendStringInfoString(&sql, "TABLE ");
+			appendStringInfoString(&sql, fmstate->fdw_option.table);
+			appendStringInfoString(&sql, " SELECT ");
+			for (i = 0; i < fmstate->p_nums; i++)
+			{
+				if (i != 0)
+				{
+					appendStringInfoString(&sql, ", ");
+				}
+				appendStringInfoString(&sql, "`");
+				appendStringInfoString(&sql, fmstate->column_names[i]);
+				appendStringInfoString(&sql, "`");
+			}
+			appendStringInfoString(&sql, " FROM ");
+			appendStringInfoString(&sql, fmstate->tmp_table_name);
+		}
+		else if (strcmp(fmstate->fdw_option.query_engine, "presto") == 0)
+		{
+			appendStringInfoString(&sql, "INSERT INTO ");
+			appendStringInfoString(&sql, fmstate->fdw_option.table);
+			appendStringInfoString(&sql, " SELECT * FROM ");
+			appendStringInfoString(&sql, fmstate->tmp_table_name);
+		}
 
-        issueQuery(
-                fmstate->fdw_option.apikey,
-                fmstate->fdw_option.endpoint,
-                fmstate->fdw_option.query_engine,
-                fmstate->fdw_option.database,
-                sql.data);
+		issueQuery(
+		    fmstate->fdw_option.apikey,
+		    fmstate->fdw_option.endpoint,
+		    fmstate->fdw_option.query_engine,
+		    fmstate->fdw_option.database,
+		    sql.data);
 
-        deleteTable(
-                fmstate->fdw_option.apikey,
-                fmstate->fdw_option.endpoint,
-                fmstate->fdw_option.database,
-                fmstate->tmp_table_name);
-    }
+		deleteTable(
+		    fmstate->fdw_option.apikey,
+		    fmstate->fdw_option.endpoint,
+		    fmstate->fdw_option.database,
+		    fmstate->tmp_table_name);
+	}
 
-    releaseImportResource(fmstate->td_client);
+	releaseImportResource(fmstate->td_client);
 
 	fmstate->td_client = NULL;
 }

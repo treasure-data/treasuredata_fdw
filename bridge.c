@@ -182,13 +182,13 @@ void createTable(
     const char *database,
     const char *table)
 {
-    create_table(
-            apikey,
-            endpoint,
-            database,
-            table,
-            debug_log,
-            error_log);
+	create_table(
+	    apikey,
+	    endpoint,
+	    database,
+	    table,
+	    debug_log,
+	    error_log);
 }
 
 void copyTableSchema(
@@ -199,15 +199,15 @@ void copyTableSchema(
     const char *dst_database,
     const char *dst_table)
 {
-    copy_table_schema(
-            apikey,
-            endpoint,
-            src_database,
-            src_table,
-            dst_database,
-            dst_table,
-            debug_log,
-            error_log);
+	copy_table_schema(
+	    apikey,
+	    endpoint,
+	    src_database,
+	    src_table,
+	    dst_database,
+	    dst_table,
+	    debug_log,
+	    error_log);
 }
 
 void deleteTable(
@@ -216,13 +216,13 @@ void deleteTable(
     const char *database,
     const char *table)
 {
-    delete_table(
-            apikey,
-            endpoint,
-            database,
-            table,
-            debug_log,
-            error_log);
+	delete_table(
+	    apikey,
+	    endpoint,
+	    database,
+	    table,
+	    debug_log,
+	    error_log);
 }
 
 void *importBegin(
@@ -234,41 +234,41 @@ void *importBegin(
     const char **coltypes,
     const char **colnames)
 {
-    return import_begin(
-            apikey,
-            endpoint,
-            database,
-            table,
-            column_size,
-            coltypes,
-            colnames,
-            debug_log,
-            error_log);
+	return import_begin(
+	           apikey,
+	           endpoint,
+	           database,
+	           table,
+	           column_size,
+	           coltypes,
+	           colnames,
+	           debug_log,
+	           error_log);
 }
 
 size_t importAppend(void *import_state, const char **values)
 {
-    return import_append(
-            import_state,
-            values,
-            debug_log,
-            error_log);
+	return import_append(
+	           import_state,
+	           values,
+	           debug_log,
+	           error_log);
 }
 
 void importAppendTableSchema(void *import_state)
 {
-    import_append_table_schema(
-            import_state,
-            debug_log,
-            error_log);
+	import_append_table_schema(
+	    import_state,
+	    debug_log,
+	    error_log);
 }
 
 void importCommit(void *import_state)
 {
-    import_commit(
-            import_state,
-            debug_log,
-            error_log);
+	import_commit(
+	    import_state,
+	    debug_log,
+	    error_log);
 }
 
 void releaseImportResource(void *td_import_state)

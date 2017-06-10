@@ -92,18 +92,18 @@ validate_option(DefElem *def, Oid context)
 
 static int my_strcasecmp(const char *s1, const char *s2)
 {
-    const unsigned char *p1 = (const unsigned char *) s1;
-    const unsigned char *p2 = (const unsigned char *) s2;
-    int result;
+	const unsigned char *p1 = (const unsigned char *) s1;
+	const unsigned char *p2 = (const unsigned char *) s2;
+	int result;
 
-    if (p1 == p2)
-        return 0;
+	if (p1 == p2)
+		return 0;
 
-    while ((result = tolower(*p1) - tolower(*p2++)) == 0)
-        if (*p1++ == '\0')
-            break;
+	while ((result = tolower(*p1) - tolower(*p2++)) == 0)
+		if (*p1++ == '\0')
+			break;
 
-    return result;
+	return result;
 }
 
 Datum
@@ -198,22 +198,22 @@ treasuredata_fdw_validator(PG_FUNCTION_ARGS)
 		}
 		else if (strcmp(def->defname, "import_file_size") == 0)
 		{
-            const char *nptr = defGetString(def);
-            char *end_ptr;
-            long size;
+			const char *nptr = defGetString(def);
+			char *end_ptr;
+			long size;
 
 			if (import_file_size)
 				ereport(ERROR,
 				        (errcode(ERRCODE_SYNTAX_ERROR),
 				         errmsg("conflicting or redundant options")));
 
-            size = strtoul(nptr, &end_ptr, 10);
+			size = strtoul(nptr, &end_ptr, 10);
 			if (nptr == end_ptr || size < 0)
 				ereport(ERROR,
 				        (errcode(ERRCODE_SYNTAX_ERROR),
 				         errmsg("import_file_size must be unsigned integer")));
 
-            import_file_size = (char *) nptr;
+			import_file_size = (char *) nptr;
 		}
 		else if (strcmp(def->defname, "atomic_import") == 0)
 		{
@@ -223,12 +223,13 @@ treasuredata_fdw_validator(PG_FUNCTION_ARGS)
 				         errmsg("conflicting or redundant options")));
 
 			atomic_import = defGetString(def);
-            if (my_strcasecmp(atomic_import, "true") != 0 &&
-                my_strcasecmp(atomic_import, "false") != 0) {
+			if (my_strcasecmp(atomic_import, "true") != 0 &&
+			        my_strcasecmp(atomic_import, "false") != 0)
+			{
 				ereport(ERROR,
 				        (errcode(ERRCODE_SYNTAX_ERROR),
 				         errmsg("'atomic_import' should be boolean")));
-            }
+			}
 		}
 	}
 
@@ -310,25 +311,29 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 		else if (strcmp(def->defname, "import_file_size") == 0)
 		{
 			const char *nptr = defGetString(def);
-            char *end_ptr;
-            long size = strtoul(nptr, &end_ptr, 10);
+			char *end_ptr;
+			long size = strtoul(nptr, &end_ptr, 10);
 
-            /* Maybe we don't need to check here since the value is already validated, but just in case... */
-            if (nptr != end_ptr && size >= 0) {
-                fdw_option->import_file_size = size;
-            }
+			/* Maybe we don't need to check here since the value is already validated, but just in case... */
+			if (nptr != end_ptr && size >= 0)
+			{
+				fdw_option->import_file_size = size;
+			}
 		}
 		else if (strcmp(def->defname, "atomic_import") == 0)
 		{
-            if (my_strcasecmp(defGetString(def), "true") == 0) {
-                fdw_option->atomic_import = true;
-            }
-            else if (my_strcasecmp(defGetString(def), "false") == 0) {
-                fdw_option->atomic_import = false;
-            }
-            else {
-                elog(ERROR, "treasuredata_fdw: atomic_import should be boolean");
-            }
+			if (my_strcasecmp(defGetString(def), "true") == 0)
+			{
+				fdw_option->atomic_import = true;
+			}
+			else if (my_strcasecmp(defGetString(def), "false") == 0)
+			{
+				fdw_option->atomic_import = false;
+			}
+			else
+			{
+				elog(ERROR, "treasuredata_fdw: atomic_import should be boolean");
+			}
 		}
 	}
 
@@ -358,6 +363,6 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 	     strlen(fdw_option->apikey),
 	     fdw_option->database,
 	     fdw_option->table,
-         fdw_option->import_file_size,
-         fdw_option->atomic_import);
+	     fdw_option->import_file_size,
+	     fdw_option->atomic_import);
 }
