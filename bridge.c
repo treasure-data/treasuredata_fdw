@@ -133,8 +133,6 @@ extern void import_commit(
     void (*error_log)(size_t, const char *)
 );
 
-extern void release_import_resource(void *td_query_state);
-
 void *issueQuery(
     const char *apikey,
     const char *endpoint,
@@ -288,11 +286,6 @@ void importCommit(void *import_state)
 	    import_state,
 	    debug_log,
 	    error_log);
-}
-
-void releaseImportResource(void *td_import_state)
-{
-	release_import_resource(td_import_state);
 }
 
 static int add_nil(fetch_result_context *context)

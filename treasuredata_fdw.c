@@ -1313,7 +1313,6 @@ treasuredataExecForeignInsert(EState *estate,
 	{
 		/* If the written data size gets too large, upload the file and setup td-client agein */
 		importCommit(fmstate->td_client);
-		releaseImportResource(fmstate->td_client);
 		fmstate->td_client = NULL;
 
 		fmstate->td_client = importBegin(
@@ -1488,7 +1487,6 @@ treasuredataEndForeignModify(EState *estate,
 
 	// Upload the chunk file to Treasure Data
 	importCommit(fmstate->td_client);
-	releaseImportResource(fmstate->td_client);
 	fmstate->td_client = NULL;
 
 	if (fmstate->fdw_option.atomic_import)

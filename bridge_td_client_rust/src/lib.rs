@@ -664,13 +664,9 @@ pub extern fn import_commit(
 
     log!(debug_log, "import_commit: entering");
 
-    let import_state = unsafe { &mut *td_import_state };
+    let import_state = unsafe { *Box::from_raw(td_import_state) };
     let uuid = &import_state.uuid;
-    let mut writable_chunk = TableImportWritableChunk::new().unwrap();
-    let ref mut orig_writable_chunk = import_state.writable_chunk;
-    std::mem::swap(&mut writable_chunk, orig_writable_chunk);
-    drop(orig_writable_chunk);
-    match writable_chunk.close() {
+    match import_state.writable_chunk.close() {
         Ok(readable_chunk) => {
             let client = &import_state.td_client;
             let result = client.import_msgpack_gz_file_to_table(
@@ -678,7 +674,6 @@ pub extern fn import_commit(
                 import_state.table.as_str(),
                 readable_chunk.file_path.as_str(), Some(uuid.simple().to_string().as_str()));
             if result.is_err() {
-                drop(readable_chunk);
                 log!(error_log, "import_commit: Failed to import readable chunk: {:?}", result);
             }
         },
@@ -689,12 +684,3 @@ pub extern fn import_commit(
 
     log!(debug_log, "import_commit: exiting");
 }
-
-#[no_mangle]
-pub extern fn release_import_resource(td_import_state: *mut TdImportState) {
-    unsafe {
-        Box::from_raw(td_import_state);
-    }
-}
-
-
