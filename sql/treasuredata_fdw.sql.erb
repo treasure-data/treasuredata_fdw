@@ -31,10 +31,10 @@ SERVER treasuredata_server OPTIONS (
     database 'treasuredata_fdw',
     query_engine '<%= @query_engine %>',
     table 'www_access_dst',
-    import_file_size '150000',
+    import_file_size '50000',
     atomic_import 'true'
 );
-INSERT INTO td_www_access_dst select * FROM td_www_access ;
+INSERT INTO td_www_access_dst SELECT * FROM td_www_access;
 CREATE FOREIGN TABLE td_array_test (
     str_array text[],
     int_array integer[],
