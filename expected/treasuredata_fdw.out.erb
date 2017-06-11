@@ -59,6 +59,23 @@ SELECT COUNT(1) FROM td_www_access WHERE time in (SELECT MIN(time) FROM td_www_a
      1
 (1 row)
 
+CREATE FOREIGN TABLE td_www_access_dst (
+    time integer,
+    code integer,
+    size integer,
+    method varchar
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'treasuredata_fdw',
+    query_engine '<%= @query_engine %>',
+    table 'www_access_dst',
+    import_file_size '150000',
+    atomic_import 'true'
+);
+INSERT INTO td_www_access_dst select * FROM td_www_access ;
+INSERT 0 5000
+
 CREATE FOREIGN TABLE td_array_test (
     str_array text[],
     int_array integer[],
@@ -83,6 +100,7 @@ SELECT * FROM td_array_test;
  {one,two,three} | {1,2,3}   | {1000000000,2000000000,3000000000} | {1.1,2.2,3.3} | {1.111,2.222,3.333} | {{one,two},{three,four}} | {{1,2},{3,4}}   | {{1000000000,2000000000},{3000000000,4000000000}} | {{1.1,2.2},{3.3,4.4}} | {{1.111,2.222},{3.333,4.444}}
 (1 row)
 
+DROP FOREIGN TABLE td_www_access_dst;
 DROP FOREIGN TABLE td_www_access;
 DROP FOREIGN TABLE td_array_test;
 DROP SERVER treasuredata_server;
