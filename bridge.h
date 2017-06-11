@@ -22,7 +22,49 @@ extern int fetchResultRow(
     void *td_query_state, int natts, char **values
 );
 
-extern void releaseResource(void *td_query_state);
+extern void releaseQueryResource(void *td_query_state);
+
+extern void createTable(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table);
+
+extern void copyTableSchema(
+    const char *apikey,
+    const char *endpoint,
+    const char *src_database,
+    const char *src_table,
+    const char *dst_database,
+    const char *dst_table);
+
+extern void appendTableSchema(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames);
+
+extern void deleteTable(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table);
+
+extern void *importBegin(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames);
+
+extern size_t importAppend(void *import_state, const char **values);
+
+extern void importCommit(void *import_state);
 
 #endif   /* TREASUREDATA_FDW_BRIDGE_H */
 

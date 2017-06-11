@@ -1644,18 +1644,18 @@ deparseOperatorName(StringInfo buf, Form_pg_operator opform)
 
 	/* opname is not a SQL identifier, so we should not quote it. */
 	opname = NameStr(opform->oprname);
-		if (strcmp(opname, "~~") == 0)
-		{
-			appendStringInfoString(buf, "LIKE");
-		}
-		else if (strcmp(opname, "!~~") == 0)
-		{
-			appendStringInfoString(buf, "NOT LIKE");
-		}
-		else
-		{
-			appendStringInfoString(buf, opname);
-		}
+	if (strcmp(opname, "~~") == 0)
+	{
+		appendStringInfoString(buf, "LIKE");
+	}
+	else if (strcmp(opname, "!~~") == 0)
+	{
+		appendStringInfoString(buf, "NOT LIKE");
+	}
+	else
+	{
+		appendStringInfoString(buf, opname);
+	}
 }
 
 /*

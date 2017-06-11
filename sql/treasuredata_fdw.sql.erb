@@ -20,6 +20,21 @@ SELECT COUNT(1) FROM td_www_access WHERE SUBSTR(method, 1, 3) = 'POS';
 SELECT COUNT(1) FROM td_www_access WHERE method LIKE '%ET' AND code = 200;
 SELECT COUNT(1) FROM td_www_access WHERE method NOT LIKE '%ET' AND code NOT IN (404);
 SELECT COUNT(1) FROM td_www_access WHERE time in (SELECT MIN(time) FROM td_www_access);
+CREATE FOREIGN TABLE td_www_access_dst (
+    time integer,
+    code integer,
+    size integer,
+    method varchar
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'treasuredata_fdw',
+    query_engine '<%= @query_engine %>',
+    table 'www_access_dst',
+    import_file_size '50000',
+    atomic_import 'true'
+);
+INSERT INTO td_www_access_dst SELECT * FROM td_www_access;
 CREATE FOREIGN TABLE td_array_test (
     str_array text[],
     int_array integer[],
@@ -39,6 +54,7 @@ SERVER treasuredata_server OPTIONS (
     table 'array_test'
 );
 SELECT * FROM td_array_test;
+DROP FOREIGN TABLE td_www_access_dst;
 DROP FOREIGN TABLE td_www_access;
 DROP FOREIGN TABLE td_array_test;
 DROP SERVER treasuredata_server;

@@ -65,7 +65,73 @@ extern bool fetch_result_row(
     void (*error_log)(size_t, const char *)
 );
 
-extern void release_resource(void *td_query_state);
+extern void release_query_resource(void *td_query_state);
+
+extern void create_table(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    void (*debug_log)(size_t, const char*),
+    void (*error_log)(size_t, const char*)
+);
+
+extern void copy_table_schema(
+    const char *apikey,
+    const char *endpoint,
+    const char *src_database,
+    const char *src_table,
+    const char *dst_database,
+    const char *dst_table,
+    void (*debug_log)(size_t, const char*),
+    void (*error_log)(size_t, const char*)
+);
+
+extern void append_table_schema(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames,
+    void (*debug_log)(size_t, const char *),
+    void (*error_log)(size_t, const char *)
+);
+
+extern void delete_table(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    void (*debug_log)(size_t, const char*),
+    void (*error_log)(size_t, const char*)
+);
+
+extern void *import_begin(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames,
+    void (*debug_log)(size_t, const char*),
+    void (*error_log)(size_t, const char*)
+);
+
+extern size_t import_append(
+    void *import_state,
+    const char **values,
+    void (*debug_log)(size_t, const char *),
+    void (*error_log)(size_t, const char *)
+);
+
+extern void import_commit(
+    void *import_state,
+    void (*debug_log)(size_t, const char *),
+    void (*error_log)(size_t, const char *)
+);
 
 void *issueQuery(
     const char *apikey,
@@ -109,9 +175,117 @@ int fetchResultRow(void *td_query_state, int natts, char **values)
 	return 1;
 }
 
-void releaseResource(void *td_query_state)
+void releaseQueryResource(void *td_query_state)
 {
-	release_resource(td_query_state);
+	release_query_resource(td_query_state);
+}
+
+void createTable(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table)
+{
+	create_table(
+	    apikey,
+	    endpoint,
+	    database,
+	    table,
+	    debug_log,
+	    error_log);
+}
+
+void copyTableSchema(
+    const char *apikey,
+    const char *endpoint,
+    const char *src_database,
+    const char *src_table,
+    const char *dst_database,
+    const char *dst_table)
+{
+	copy_table_schema(
+	    apikey,
+	    endpoint,
+	    src_database,
+	    src_table,
+	    dst_database,
+	    dst_table,
+	    debug_log,
+	    error_log);
+}
+
+void appendTableSchema(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames)
+{
+	append_table_schema(
+	    apikey,
+	    endpoint,
+	    database,
+	    table,
+	    column_size,
+	    coltypes,
+	    colnames,
+	    debug_log,
+	    error_log);
+}
+
+void deleteTable(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table)
+{
+	delete_table(
+	    apikey,
+	    endpoint,
+	    database,
+	    table,
+	    debug_log,
+	    error_log);
+}
+
+void *importBegin(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    const char *table,
+    int column_size,
+    const char **coltypes,
+    const char **colnames)
+{
+	return import_begin(
+	           apikey,
+	           endpoint,
+	           database,
+	           table,
+	           column_size,
+	           coltypes,
+	           colnames,
+	           debug_log,
+	           error_log);
+}
+
+size_t importAppend(void *import_state, const char **values)
+{
+	return import_append(
+	           import_state,
+	           values,
+	           debug_log,
+	           error_log);
+}
+
+void importCommit(void *import_state)
+{
+	import_commit(
+	    import_state,
+	    debug_log,
+	    error_log);
 }
 
 static int add_nil(fetch_result_context *context)
