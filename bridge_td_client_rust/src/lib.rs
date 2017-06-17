@@ -1,5 +1,6 @@
 extern crate hyper;
 extern crate libc;
+extern crate retry;
 extern crate time;
 extern crate uuid;
 extern crate td_client;
@@ -9,6 +10,7 @@ use std::ptr::null_mut;
 use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, RecvError};
 use std::thread;
+use retry::Retry;
 use td_client::client::*;
 use td_client::error::*;
 use td_client::model::*;
@@ -113,6 +115,7 @@ pub extern fn issue_query(
     let query_engine = convert_str_from_raw_str(raw_query_engine);
     let database = convert_str_from_raw_str(raw_database);
     let query = convert_str_from_raw_str(raw_query);
+    let domain_key = Uuid::new_v4();
 
     log!(debug_log, "issue_query: entering");
     log!(debug_log, "issue_query: apikey.len={:?}", apikey.len());
@@ -120,6 +123,7 @@ pub extern fn issue_query(
     log!(debug_log, "issue_query: query_engine={:?}", query_engine);
     log!(debug_log, "issue_query: database={:?}", database);
     log!(debug_log, "issue_query: query={:?}", query);
+    log!(debug_log, "issue_query: domain_key={:?}", domain_key);
 
     let client = create_client(apikey, &endpoint);
     let query_type = match QueryType::from_str(query_engine) {
@@ -132,46 +136,61 @@ pub extern fn issue_query(
     };
     log!(debug_log, "issue_query: query_type={:?}", query_type);
     
-    let job_id = match client.issue_job(query_type, database, query,
-                                None, None, None, None, None) {
-        Ok(job_id) => job_id,
-        Err(err) => {
-            log!(error_log, "Failed to issue query. database={:?}, query={:?}, error={:?}", 
-                    database, query, err);
-            return null_mut()
-        }
-    };
+    let job_id = match Retry::new(
+            &mut || client.issue_job(query_type.clone(), database, query,
+                        None, None, None,
+                        Some(domain_key.simple().to_string().as_str()), None),
+            &mut |result| result.is_ok()
+        ).try(30).wait(20000).execute() {
+            Ok(job_id_result) => job_id_result.unwrap(),
+            Err(err) => {
+                log!(error_log, "Failed to issue query. database={:?}, query={:?}, error={:?}", 
+                        database, query, err);
+                return null_mut()
+            }
+        };
 
-    match client.wait_job(job_id, None) {
-        Ok(JobStatus::Success) => (),
-        Ok(status) => {
-            log!(error_log, "Unexpected status. job_id={:?}, status={:?}", job_id, status);
-            return null_mut()
-        },
-        Err(err) => {
-            log!(error_log, "Failed to wait query execution. job_id={:?}, error={:?}", 
-                     job_id, err);
-            return null_mut()
-        }
-    }
+    match Retry::new(
+            &mut || client.wait_job(job_id, None),
+            &mut |result| result.is_ok()
+        ).try(30).wait(20000).execute() {
+            Ok(Ok(JobStatus::Success)) => (),
+            Ok(Ok(status)) => {
+                log!(error_log, "Unexpected status. job_id={:?}, status={:?}", job_id, status);
+                return null_mut()
+            },
+            Ok(Err(err)) => {
+                log!(error_log, "Failed to wait query execution. job_id={:?}, error={:?}", 
+                         job_id, err);
+                return null_mut()
+            },
+            Err(err) => {
+                log!(error_log, "Failed to wait query execution. job_id={:?}, error={:?}", 
+                         job_id, err);
+                return null_mut()
+            }
+        };
 
     log!(debug_log, "issue_query: job finished. job_id={:?}", job_id);
 
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        match client.each_row_in_job_result(
-            job_id,
-            &|xs: Vec<Value>| match tx.send(Some(xs)) {
-                Ok(()) => (),
-                Err(err) => {
-                    log!(error_log, "Failed to pass results. job_id={:?}, error={:?}",
-                             job_id, err)
-                    // TODO: How to propagate this error....?
+        match Retry::new(
+            &mut || client.each_row_in_job_result(
+                job_id,
+                &|xs: Vec<Value>| match tx.send(Some(xs)) {
+                    Ok(()) => (),
+                    Err(err) => {
+                        log!(error_log, "Failed to pass results. job_id={:?}, error={:?}",
+                                 job_id, err)
+                        // TODO: How to propagate this error....?
+                    }
                 }
-            }
-        ) {
-            Ok(()) => match tx.send(None) {
+            ),
+            &mut |result| result.is_ok()
+        ).try(30).wait(20000).execute() {
+            Ok(_) => match tx.send(None) {
                 Ok(()) => (),
                 Err(err) => {
                     log!(error_log, "Failed put sentinel in the queue. job_id={:?}, error={:?}",
