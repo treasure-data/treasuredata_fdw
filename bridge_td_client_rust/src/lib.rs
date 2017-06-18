@@ -69,6 +69,9 @@ fn convert_str_from_raw_str<'a>(raw: *const c_char) -> &'a str {
     }
 }
 
+const RETRY_FIXED_INTERVAL_MILLI: u64 = 20000;
+const RETRY_COUNT: u64 = 30;
+
 fn convert_str_opt_from_raw_str<'a>(raw: *const c_char) -> Option<&'a str> {
     unsafe {
         if raw.is_null() {
@@ -100,6 +103,17 @@ fn create_client<'a>(apikey: &'a str, endpoint: &'a Option<&'a str>) -> Client<D
     client
 }
 
+fn test_if_needs_to_retry<T>(result: &Result<T, TreasureDataError>) -> bool {
+    match result {
+        &Ok(_) => true,
+        &Err(ref err) => match err {
+            &TreasureDataError::ApiError(status_code, _) =>
+                status_code.to_u16() / 100 == 4,
+            _ => false
+        }
+    }
+}
+
 #[no_mangle]
 pub extern fn issue_query(
     raw_apikey: *const c_char,
@@ -108,8 +122,8 @@ pub extern fn issue_query(
     raw_database: *const c_char,
     raw_query: *const c_char,
     debug_log: extern fn(usize, &[u8]),
-    error_log: extern fn(usize, &[u8])
-    ) -> *mut TdQueryState {
+    error_log: extern fn(usize, &[u8])) -> *mut TdQueryState {
+
     let apikey = convert_str_from_raw_str(raw_apikey);
     let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
     let query_engine = convert_str_from_raw_str(raw_query_engine);
@@ -129,7 +143,7 @@ pub extern fn issue_query(
     let query_type = match QueryType::from_str(query_engine) {
         Ok(query_type) => query_type,
         Err(err) => {
-            log!(error_log, "Invalid query engine. query_engine={:?}. error={:?}", 
+            log!(error_log, "issue_query: Invalid query engine. query_engine={:?}. error={:?}", 
                     query_engine, err);
             return null_mut()
         }
@@ -140,33 +154,44 @@ pub extern fn issue_query(
             &mut || client.issue_job(query_type.clone(), database, query,
                         None, None, None,
                         Some(domain_key.simple().to_string().as_str()), None),
-            &mut |result| result.is_ok()
-        ).try(30).wait(20000).execute() {
-            Ok(job_id_result) => job_id_result.unwrap(),
+            &mut |result| test_if_needs_to_retry(result)
+        ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
+            Ok(Ok(job_id)) => job_id,
+            Ok(Err(err)) => {
+                log!(error_log,
+                     "issue_query: Failed to issue a query. database={:?}, query={:?}, error={:?}", 
+                     database, query, err);
+                return null_mut()
+            },
             Err(err) => {
-                log!(error_log, "Failed to issue query. database={:?}, query={:?}, error={:?}", 
-                        database, query, err);
+                log!(error_log,
+                     "issue_query: Failed to issue a query. database={:?}, query={:?}, error={:?}", 
+                     database, query, err);
                 return null_mut()
             }
         };
 
     match Retry::new(
             &mut || client.wait_job(job_id, None),
-            &mut |result| result.is_ok()
-        ).try(30).wait(20000).execute() {
+            &mut |result| test_if_needs_to_retry(result)
+        ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
             Ok(Ok(JobStatus::Success)) => (),
             Ok(Ok(status)) => {
-                log!(error_log, "Unexpected status. job_id={:?}, status={:?}", job_id, status);
+                log!(error_log,
+                     "issue_query: Unexpected status. job_id={:?}, status={:?}",
+                     job_id, status);
                 return null_mut()
             },
             Ok(Err(err)) => {
-                log!(error_log, "Failed to wait query execution. job_id={:?}, error={:?}", 
-                         job_id, err);
+                log!(error_log,
+                     "issue_query: Failed to wait query execution. job_id={:?}, error={:?}",
+                     job_id, err);
                 return null_mut()
             },
             Err(err) => {
-                log!(error_log, "Failed to wait query execution. job_id={:?}, error={:?}", 
-                         job_id, err);
+                log!(error_log,
+                     "issue_query: Failed to wait query execution. job_id={:?}, error={:?}",
+                     job_id, err);
                 return null_mut()
             }
         };
@@ -182,25 +207,28 @@ pub extern fn issue_query(
                 &|xs: Vec<Value>| match tx.send(Some(xs)) {
                     Ok(()) => (),
                     Err(err) => {
-                        log!(error_log, "Failed to pass results. job_id={:?}, error={:?}",
-                                 job_id, err)
-                        // TODO: How to propagate this error....?
+                        log!(error_log,
+                             "issue_query: Failed to pass results. job_id={:?}, error={:?}",
+                             job_id, err)
                     }
                 }
             ),
-            &mut |result| result.is_ok()
-        ).try(30).wait(20000).execute() {
-            Ok(_) => match tx.send(None) {
+            &mut |result| test_if_needs_to_retry(result)
+        ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
+            Ok(Ok(())) => match tx.send(None) {
                 Ok(()) => (),
                 Err(err) => {
-                    log!(error_log, "Failed put sentinel in the queue. job_id={:?}, error={:?}",
-                             job_id, err)
+                    log!(error_log,
+                         "issue_query: Failed put sentinel in the queue. job_id={:?}, error={:?}",
+                         job_id, err)
                 }
             },
-            Err(err) => {
-                log!(error_log, "Failed to fetch result. job_id={:?}, error={:?}",
-                         job_id, err)
-            }
+            Ok(Err(err)) => log!(error_log,
+                                 "issue_query: Failed to fetch result. job_id={:?}, error={:?}",
+                                 job_id, err),
+            Err(err) => log!(error_log,
+                             "issue_query: Failed to fetch result. job_id={:?}, error={:?}",
+                             job_id, err)
         }
     });
 
@@ -224,8 +252,7 @@ pub extern fn fetch_result_row(
     add_nil: extern fn(*const c_void),
     add_bytes: extern fn(*const c_void, usize, &[u8]),
     debug_log: extern fn(usize, &[u8]),
-    error_log: extern fn(usize, &[u8])
-    ) -> bool {
+    error_log: extern fn(usize, &[u8])) -> bool {
 
     let query_state = unsafe { &mut *td_query_state };
 
@@ -330,15 +357,14 @@ pub extern fn create_table(
 
     let client = create_client(apikey, &endpoint);
 
-    match client.create_table(database, table) {
-        Ok(()) => (),
-        Err(err) => match err {
-            TreasureDataError::ApiError(status_code, _) => match status_code {
-                ::hyper::status::StatusCode::Conflict => (),
-                _ => log!(error_log, "create_table: {:?}", err)
-            },
-            _ => log!(error_log, "create_table: {:?}", err)
-        }
+    match Retry::new(
+        &mut || client.create_table(database, table),
+        &mut |result| test_if_needs_to_retry(result)
+    ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
+        Ok(Ok(())) => (),
+        Ok(Err(TreasureDataError::ApiError(::hyper::status::StatusCode::Conflict, _))) => (),
+        Ok(Err(err)) => log!(error_log, "create_table: Failed to create a table. {:?}", err),
+        Err(err) => log!(error_log, "create_table: Failed to create a table. {:?}", err)
     }
 
     log!(debug_log, "create_table: exiting");
@@ -372,11 +398,17 @@ pub extern fn copy_table_schema(
 
     let client = create_client(apikey, &endpoint);
 
-    match client.copy_table_schema(src_database, src_table, dst_database, dst_table) {
-        Ok(()) => (),
-        Err(err) => log!(error_log, "copy_table_schema: {:?}", err)
+    match Retry::new(
+        &mut || client.copy_table_schema(src_database, src_table, dst_database, dst_table),
+        &mut |result| test_if_needs_to_retry(result)
+    ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
+        Ok(Ok(())) => (),
+        Ok(Err(err)) => log!(error_log,
+                             "copy_table_schema: Failed to copy table schema {:?}", err),
+        Err(err) => log!(error_log,
+                         "copy_table_schema: Failed to copy table schema {:?}", err)
     }
-
+        
     log!(debug_log, "copy_table_schema: exiting");
 }
 
@@ -414,8 +446,6 @@ pub extern fn append_table_schema(
     log!(debug_log, "append_table_schema: column_types={:?}", column_types);
     log!(debug_log, "append_table_schema: colmun_names={:?}", column_names);
 
-    let client = create_client(apikey, &endpoint);
-
     let mut schema_types = Vec::new();
     for i in 0..column_size {
         let column_name = &column_names[i];
@@ -441,11 +471,19 @@ pub extern fn append_table_schema(
 
     log!(debug_log, "append_table_schema: schema_types={:?}", schema_types);
 
-    match client.append_schema(database, table, schema_types) {
-        Ok(()) => (),
-        Err(err) => log!(error_log, "append_table_schema: {:?}", err)
-    }
+    let client = create_client(apikey, &endpoint);
 
+    match Retry::new(
+        &mut || client.append_schema(database, table, &schema_types),
+        &mut |result| test_if_needs_to_retry(result)
+    ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
+        Ok(Ok(())) => (),
+        Ok(Err(err)) => log!(error_log,
+                             "append_table_schema: Failed to append table schema {:?}", err),
+        Err(err) => log!(error_log,
+                         "append_table_schema: Failed to append table schema {:?}", err)
+    }
+        
     log!(debug_log, "append_table_schema: exiting");
 }
 
@@ -471,17 +509,16 @@ pub extern fn delete_table(
 
     let client = create_client(apikey, &endpoint);
 
-    match client.delete_table(database, table) {
-        Ok(()) => (),
-        Err(err) => match err {
-            TreasureDataError::ApiError(status_code, _) => match status_code {
-                ::hyper::status::StatusCode::NotFound => (),
-                _ => log!(error_log, "delete_table: {:?}", err)
-            },
-            _ => log!(error_log, "delete_table: {:?}", err)
-        }
+    match Retry::new(
+        &mut || client.delete_table(database, table),
+        &mut |result| test_if_needs_to_retry(result)
+    ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
+        Ok(Ok(())) => (),
+        Ok(Err(TreasureDataError::ApiError(::hyper::status::StatusCode::NotFound, _))) => (),
+        Ok(Err(err)) => log!(error_log, "delete_table: Failed to delete table {:?}", err),
+        Err(err) => log!(error_log, "delete_table: Failed to delete table {:?}", err)
     }
-
+        
     log!(debug_log, "delete_table: exiting");
 }
 
@@ -684,20 +721,31 @@ pub extern fn import_commit(
     log!(debug_log, "import_commit: entering");
 
     let import_state = unsafe { *Box::from_raw(td_import_state) };
+    let database = import_state.database.as_str();
+    let table = import_state.table.as_str();
     let uuid = &import_state.uuid;
+    let client = &import_state.td_client;
     match import_state.writable_chunk.close() {
         Ok(readable_chunk) => {
-            let client = &import_state.td_client;
-            let result = client.import_msgpack_gz_file_to_table(
-                import_state.database.as_str(),
-                import_state.table.as_str(),
-                readable_chunk.file_path.as_str(), Some(uuid.simple().to_string().as_str()));
-            if result.is_err() {
-                log!(error_log, "import_commit: Failed to import readable chunk: {:?}", result);
-            }
+            match Retry::new(
+                &mut || client.import_msgpack_gz_file_to_table(
+                            database, table,
+                            &readable_chunk.file_path.as_str(),
+                            Some(uuid.simple().to_string().as_str())),
+                &mut |result| test_if_needs_to_retry(result)
+            ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
+                Ok(Ok(())) => (),
+                Ok(Err(err)) =>
+                    log!(error_log,
+                         "import_commit: Failed to import readable chunk: {:?}", err),
+                Err(err) => 
+                    log!(error_log,
+                         "import_commit: Failed to import readable chunk: {:?}", err)
+            };
         },
         Err(err) => {
-            log!(error_log, "import_commit: Failed to close writable chunk: {:?}", err);
+            log!(error_log,
+                 "import_commit: Failed to close writable chunk: {:?}", err);
         },
     };
 
