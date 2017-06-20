@@ -11,6 +11,7 @@
  *-------------------------------------------------------------------------
  */
 #include <unistd.h>
+#include <time.h>
 
 #include "postgres.h"
 
@@ -319,11 +320,11 @@ static const char **convert_prep_stmt_params(TdFdwModifyState *fmstate,
         ItemPointer tupleid,
         TupleTableSlot *slot);
 
+#if 0
 static int set_transmission_modes(void);
 
 static void reset_transmission_modes(int nestlevel);
 
-#if 0
 static bool ec_member_matches_foreign(PlannerInfo *root, RelOptInfo *rel,
                                       EquivalenceClass *ec, EquivalenceMember *em,
                                       void *arg);
@@ -1032,6 +1033,7 @@ treasuredataPlanForeignModify(PlannerInfo *root,
 	if (plan->returningLists)
 		elog(ERROR, "This FDW doesn't support RETURNING");
 
+#if 0
 	/*
 	 * ON CONFLICT DO UPDATE and DO NOTHING case with inference specification
 	 * should have already been rejected in the optimizer, as presently there
@@ -1043,6 +1045,7 @@ treasuredataPlanForeignModify(PlannerInfo *root,
 	else if (plan->onConflictAction != ONCONFLICT_NONE)
 		elog(ERROR, "unexpected ON CONFLICT specification: %d",
 		     (int) plan->onConflictAction);
+#endif
 
 	/*
 	 * Construct the SQL command string.
@@ -1744,6 +1747,7 @@ ec_member_matches_foreign(PlannerInfo *root, RelOptInfo *rel,
 }
 #endif
 
+#if 0
 /*
  * Force assorted GUC parameters to settings that ensure that we'll output
  * data values in a form that is unambiguous to the remote server.
@@ -1794,7 +1798,6 @@ reset_transmission_modes(int nestlevel)
 	AtEOXact_GUC(true, nestlevel);
 }
 
-#if 0
 /*
  * prepare_foreign_modify
  *		Establish a prepared statement for execution of INSERT/UPDATE/DELETE
@@ -1870,10 +1873,14 @@ convert_prep_stmt_params(TdFdwModifyState *fmstate,
 	/* get following parameters from slot */
 	if (slot != NULL && fmstate->target_attrs != NIL)
 	{
+        /*
 		int			nestlevel;
+        */
 		ListCell   *lc;
 
+        /*
 		nestlevel = set_transmission_modes();
+        */
 
 		foreach(lc, fmstate->target_attrs)
 		{
@@ -1890,7 +1897,9 @@ convert_prep_stmt_params(TdFdwModifyState *fmstate,
 			pindex++;
 		}
 
+        /*
 		reset_transmission_modes(nestlevel);
+        */
 	}
 
 	Assert(pindex == fmstate->p_nums);
