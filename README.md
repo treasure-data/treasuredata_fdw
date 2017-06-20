@@ -51,9 +51,8 @@ ALTER EXTENSION treasuredata_fdw UPDATE;
 Specify your API key, database, query engine type ('presto' or 'hive') in CREATE FOREIGN TABLE statement. You can specify either your table name or query for Treasure Data directly.
 
 ```
-CREATE FOREIGN TABLE sample_datasets (
+CREATE FOREIGN TABLE sample_www_access (
     time integer,
-    "user" varchar,
     host varchar,
     path varchar,
     referer varchar,
@@ -66,13 +65,11 @@ SERVER treasuredata_server OPTIONS (
     apikey 'your_api_key',
     database 'sample_datasets',
     query_engine 'presto',
-    table 'www_access',
-    import_file_size '67108864',
-    atomic_import 'true'
+    table 'www_access'
 );
 
 SELECT code, count(1)
-FROM sample_datasets
+FROM sample_www_access
 WHERE time BETWEEN 1412121600 AND 1414800000
 GROUP BY code;
 
@@ -83,6 +80,27 @@ GROUP BY code;
   500 |     2
 (3 rows)
 
+CREATE FOREIGN TABLE my_www_access (
+    time integer,
+    host varchar,
+    path varchar,
+    referer varchar,
+    code integer,
+    agent varchar,
+    size integer,
+    method varchar
+)
+SERVER treasuredata_server OPTIONS (
+    apikey 'your_api_key',
+    database 'mydb',
+    query_engine 'presto',
+    table 'www_access',
+    import_file_size '67108864',
+    atomic_import 'true'
+);
+
+INSERT INTO my_www_access SELECT * FROM sample_www_access;
+INSERT 0 5000
 ```
 
 Also, you can specify other API endpoint.
