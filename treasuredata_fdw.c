@@ -157,12 +157,16 @@ typedef struct TdFdwScanState
 	int			num_tuples;		/* # of tuples in array */
 	int			next_tuple;		/* index of next one to return */
 
+#if 0
 	/* batch-level state, for optimizing rewinds and avoiding useless fetch */
 	int			fetch_ct_2;		/* Min(# of fetches done, 2) */
 	bool		eof_reached;	/* true if last fetch reached EOF */
+#endif
 
 	/* working memory contexts */
+#if 0
 	MemoryContext batch_cxt;	/* context holding current batch of tuples */
+#endif
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
 
 	/* Cached catalog information. */
@@ -742,11 +746,13 @@ treasuredataBeginForeignScan(ForeignScanState *node, int eflags)
 
 
 	/* Create contexts for batches of tuples and per-tuple temp workspace. */
+#if 0
 	fsstate->batch_cxt = AllocSetContextCreate(estate->es_query_cxt,
 	                     "treasuredata_fdw tuple data",
 	                     ALLOCSET_DEFAULT_MINSIZE,
 	                     ALLOCSET_DEFAULT_INITSIZE,
 	                     ALLOCSET_DEFAULT_MAXSIZE);
+#endif
 	fsstate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
 	                    "treasuredata_fdw temporary data",
 	                    ALLOCSET_SMALL_MINSIZE,
