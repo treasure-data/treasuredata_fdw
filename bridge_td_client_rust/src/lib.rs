@@ -205,11 +205,13 @@ pub extern fn issue_query(
             &mut || client.each_row_in_job_result(
                 job_id,
                 &|xs: Vec<Value>| match tx.send(Some(xs)) {
-                    Ok(()) => (),
+                    Ok(()) => true,
                     Err(err) => {
-                        log!(error_log,
-                             "issue_query: Failed to pass results. job_id={:?}, error={:?}",
-                             job_id, err)
+                        log!(debug_log,
+                             "issue_query: Failed to put a result row into the queue. This error can happen when the query is already finished. job_id={:?}, error={:?}",
+                             job_id, err);
+                        // Stop processing result rows
+                        false
                     }
                 }
             ),
@@ -218,8 +220,8 @@ pub extern fn issue_query(
             Ok(Ok(())) => match tx.send(None) {
                 Ok(()) => (),
                 Err(err) => {
-                    log!(error_log,
-                         "issue_query: Failed put sentinel in the queue. job_id={:?}, error={:?}",
+                    log!(debug_log,
+                         "issue_query: Failed to put a sentinel into the queue. This error can happen when the query is already finished. job_id={:?}, error={:?}",
                          job_id, err)
                 }
             },
