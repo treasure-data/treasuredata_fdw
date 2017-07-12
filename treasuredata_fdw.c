@@ -565,8 +565,11 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 	List	   *local_exprs = NIL;
 	List	   *params_list = NIL;
 	List	   *retrieved_attrs;
+    TdFdwOption fdw_option;
 	StringInfoData sql;
 	ListCell   *lc;
+
+ExtractFdwOptions(fpinfo->table, &fdw_option);
 
 	/*
 	 * Separate the scan_clauses into those that can be executed remotely and
@@ -623,6 +626,12 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 	if (remote_conds)
 		appendWhereClause(&sql, root, baserel, remote_conds,
 		                  true, &params_list, fpinfo->query_engine_type);
+
+if (fdw_option.query != NULL)
+{
+	initStringInfo(&sql);
+    appendStringInfoString(&sql, fdw_option.query);
+}
 
 	/*
 	 * Add FOR UPDATE/SHARE if appropriate.  We apply locking during the
