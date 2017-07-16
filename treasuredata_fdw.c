@@ -144,6 +144,7 @@ typedef struct TdFdwScanState
 	/* extracted fdw_private data */
 	char	   *query;			/* text of SELECT command */
 	List	   *retrieved_attrs;	/* list of retrieved attribute numbers */
+	bool        fetch_all_column;    /* If all columns always need to be fetched (in case of 'query' option mode) */
 
 	/* for remote query execution */
 	void       *td_client;
@@ -345,6 +346,7 @@ static void analyze_row_processor(PGresult *res, int row,
                                   TdFdwAnalyzeState *astate);
 #endif
 static HeapTuple make_tuple_from_result_row(void *td_client,
+        bool fetch_all_column,
         Relation rel,
         AttInMetadata *attinmeta,
         List *retrieved_attrs,
@@ -565,11 +567,11 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 	List	   *local_exprs = NIL;
 	List	   *params_list = NIL;
 	List	   *retrieved_attrs;
-    TdFdwOption fdw_option;
+	TdFdwOption fdw_option;
 	StringInfoData sql;
 	ListCell   *lc;
 
-ExtractFdwOptions(fpinfo->table, &fdw_option);
+	ExtractFdwOptions(fpinfo->table, &fdw_option);
 
 	/*
 	 * Separate the scan_clauses into those that can be executed remotely and
@@ -627,11 +629,12 @@ ExtractFdwOptions(fpinfo->table, &fdw_option);
 		appendWhereClause(&sql, root, baserel, remote_conds,
 		                  true, &params_list, fpinfo->query_engine_type);
 
-if (fdw_option.query != NULL)
-{
-	initStringInfo(&sql);
-    appendStringInfoString(&sql, fdw_option.query);
-}
+    /* Use a SQL specified as 'query' option param instead if it's enabled */
+	if (fdw_option.query != NULL)
+	{
+		initStringInfo(&sql);
+		appendStringInfoString(&sql, fdw_option.query);
+	}
 
 	/*
 	 * Add FOR UPDATE/SHARE if appropriate.  We apply locking during the
@@ -826,6 +829,8 @@ treasuredataIterateForeignScan(ForeignScanState *node)
 		TdFdwOption fdw_option;
 		ExtractFdwOptions(fsstate->table, &fdw_option);
 
+		fsstate->fetch_all_column = fdw_option.query != NULL;
+
 		fsstate->td_client = issueQuery(
 		                         fdw_option.apikey,
 		                         fdw_option.endpoint,
@@ -836,6 +841,7 @@ treasuredataIterateForeignScan(ForeignScanState *node)
 
 	tuple = make_tuple_from_result_row(
 	            fsstate->td_client,
+	            fsstate->fetch_all_column,
 	            fsstate->rel,
 	            fsstate->attinmeta,
 	            fsstate->retrieved_attrs,
@@ -1200,6 +1206,11 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 
 		fmstate->table = GetForeignTable(RelationGetRelid(rel));
 		ExtractFdwOptions(fmstate->table, &fmstate->fdw_option);
+
+		if (fmstate->fdw_option.query != NULL)
+		{
+			elog(ERROR, "This FDW with 'query' option parameter doesn't support INSERT");
+		}
 
 		/* Set up for remaining transmittable parameters */
 		foreach(lc, fmstate->target_attrs)
@@ -1888,14 +1899,14 @@ convert_prep_stmt_params(TdFdwModifyState *fmstate,
 	/* get following parameters from slot */
 	if (slot != NULL && fmstate->target_attrs != NIL)
 	{
-        /*
+		/*
 		int			nestlevel;
-        */
+		*/
 		ListCell   *lc;
 
-        /*
+		/*
 		nestlevel = set_transmission_modes();
-        */
+		*/
 
 		foreach(lc, fmstate->target_attrs)
 		{
@@ -1912,9 +1923,9 @@ convert_prep_stmt_params(TdFdwModifyState *fmstate,
 			pindex++;
 		}
 
-        /*
+		/*
 		reset_transmission_modes(nestlevel);
-        */
+		*/
 	}
 
 	Assert(pindex == fmstate->p_nums);
@@ -2520,6 +2531,7 @@ treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
  */
 static HeapTuple
 make_tuple_from_result_row(void *td_client,
+                           bool fetch_all_column,
                            Relation rel,
                            AttInMetadata *attinmeta,
                            List *retrieved_attrs,
@@ -2571,15 +2583,25 @@ make_tuple_from_result_row(void *td_client,
 	}
 
 	/*
-	 * i indexes columns in the relation, j indexes columns in the PGresult.
+	 * i indexes columns in the relation, j indexes columns in the result from Treasure Data.
 	 */
 	j = 0;
 	foreach(lc, retrieved_attrs)
 	{
 		int			i = lfirst_int(lc);
+		int        result_index;
 		char	   *valstr;
 
-		valstr = result_values[j];
+		if (fetch_all_column)
+		{
+			result_index = i - 1;
+		}
+		else
+		{
+			result_index = j;
+		}
+
+		valstr = result_values[result_index];
 
 		/* convert value to internal representation */
 		if (i > 0)
