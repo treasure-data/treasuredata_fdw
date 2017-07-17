@@ -80,6 +80,28 @@ GROUP BY code;
   500 |     2
 (3 rows)
 
+CREATE FOREIGN TABLE nginx_status_summary (
+    text varchar,
+    cnt integer
+)
+SERVER td_server OPTIONS (
+    apikey 'your_api_key',
+    database 'api_staging',
+    query_engine 'hive',
+    query 'SELECT c.text, COUNT(1) AS cnt FROM nginx_access n
+          JOIN mitsudb.codes c ON CAST(n.status AS bigint) = c.code
+          WHERE TD_TIME_RANGE(n.time, ''2015-07-05'')
+          GROUP BY c.text'
+);
+
+SELECT * FROM nginx_status_summary;
+     text      |   cnt
+---------------+----------
+ OK            | 10123456
+ Forbidden     |       12
+ Unauthorized  |     3211
+    :
+
 CREATE FOREIGN TABLE my_www_access (
     time integer,
     host varchar,
@@ -116,7 +138,8 @@ SERVER treasuredata_fdw OPTIONS (
 
 - apikey : API Key for Treasure Data. See [Get API Keys](https://docs.treasuredata.com/articles/get-apikey).
 - database : Database name on Treasure Data that the foreign table corresponds to.
-- table : Table name on Treasure Data that the foreign table corresponds to.
+- table : Table name on Treasure Data that the foreign table corresponds to. This option can't be used with `query` option.
+- query: SELECT statement that is sent to Treasure Data directly. The SQL needs to be a valid Presto/Hive query on Treasure Data and return the same column names as columns of the foreign table. This option can't be used with `table` option.
 - query_engine : Query engine name (`presto` or `hive`) that queries on the foreign table use.
 - endpoint: Treasure Data's API endpoint (optional).
 - import_file_size : Approximate maximum size of chunk files uploaded to Treasure Data. The default value is `134217728` (128MB).
