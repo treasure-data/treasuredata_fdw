@@ -66,6 +66,35 @@ SELECT COUNT(1) FROM (SELECT * FROM td_www_access LIMIT 1) x WHERE size > 0;
      1
 (1 row)
 
+CREATE FOREIGN TABLE td_summary_in_www_access (
+    code integer,
+    method varchar,
+    count integer
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'sample_datasets',
+    query_engine '<%= @query_engine %>',
+    query 'SELECT code, method, COUNT(1) as count FROM www_access GROUP BY code, method'
+);
+SELECT * FROM td_summary_in_www_access ORDER BY code, method;
+ code | method | count 
+------+--------+-------
+  200 | GET    |  4605
+  200 | POST   |   376
+  404 | GET    |    17
+  500 | GET    |     2
+(4 rows)
+
+SELECT method, code FROM td_summary_in_www_access ORDER BY code, method;
+ method | code 
+--------+------
+ GET    |  200
+ POST   |  200
+ GET    |  404
+ GET    |  500
+(4 rows)
+
 CREATE FOREIGN TABLE td_www_access_dst (
     time integer,
     code integer,
@@ -106,6 +135,7 @@ SELECT * FROM td_array_test;
 (1 row)
 
 DROP FOREIGN TABLE td_www_access_dst;
+DROP FOREIGN TABLE td_summary_in_www_access;
 DROP FOREIGN TABLE td_www_access;
 DROP FOREIGN TABLE td_array_test;
 DROP SERVER treasuredata_server;
