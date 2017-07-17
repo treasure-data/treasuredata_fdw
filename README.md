@@ -139,7 +139,7 @@ SERVER treasuredata_fdw OPTIONS (
 - apikey : API Key for Treasure Data. See [Get API Keys](https://docs.treasuredata.com/articles/get-apikey).
 - database : Database name on Treasure Data that the foreign table corresponds to.
 - table : Table name on Treasure Data that the foreign table corresponds to. This option can't be used with `query` option.
-- query: SELECT statement that is sent to Treasure Data directly. The SQL needs to be a valid Presto/Hive query on Treasure Data and return the same column names as columns of the foreign table. This option can't be used with `table` option.
+- query: SELECT statement that is sent to Treasure Data directly. The SQL needs to be a valid Presto/Hive query on Treasure Data and return the same column names as columns of the foreign table. Also, this FDW with this option doesn't support INSERT statement. This option can't be used with `table` option.
 - query_engine : Query engine name (`presto` or `hive`) that queries on the foreign table use.
 - endpoint: Treasure Data's API endpoint (optional).
 - import_file_size : Approximate maximum size of chunk files uploaded to Treasure Data. The default value is `134217728` (128MB).
