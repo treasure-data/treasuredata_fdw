@@ -629,7 +629,7 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 		appendWhereClause(&sql, root, baserel, remote_conds,
 		                  true, &params_list, fpinfo->query_engine_type);
 
-    /* Use a SQL specified as 'query' option param instead if it's enabled */
+	/* Use a SQL specified as 'query' option param instead if it's enabled */
 	if (fdw_option.query != NULL)
 	{
 		initStringInfo(&sql);
@@ -2594,6 +2594,11 @@ make_tuple_from_result_row(void *td_client,
 
 		if (fetch_all_column)
 		{
+			if (i <= 0)
+			{
+				elog(ERROR, "This FDW with 'query' option param doesn't support special attributes");
+			}
+			Assert(i <= tupdesc->natts);
 			result_index = i - 1;
 		}
 		else
