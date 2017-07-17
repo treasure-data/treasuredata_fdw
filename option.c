@@ -43,6 +43,7 @@ static const struct PgFdwOption valid_options[] =
 	{"apikey", ForeignTableRelationId},
 	{"database", ForeignTableRelationId},
 	{"table", ForeignTableRelationId},
+	{"query", ForeignTableRelationId},
 	{"import_file_size", ForeignTableRelationId},
 	{"atomic_import", ForeignTableRelationId},
 
@@ -254,6 +255,11 @@ treasuredata_fdw_validator(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 			        (errcode(ERRCODE_FDW_DYNAMIC_PARAMETER_VALUE_NEEDED),
 			         errmsg("table or query is required for treasuredata_fdw foreign tables")));
+
+		if (table != NULL && query != NULL)
+			ereport(ERROR,
+			        (errcode(ERRCODE_FDW_DYNAMIC_PARAMETER_VALUE_NEEDED),
+			         errmsg("both table and query can't be specified with treasuredata_fdw foreign tables")));
 	}
 
 	PG_RETURN_VOID();
@@ -281,6 +287,7 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 	fdw_option->apikey = NULL;
 	fdw_option->database = NULL;
 	fdw_option->table = NULL;
+	fdw_option->query = NULL;
 	fdw_option->import_file_size = 128 * 1024 * 1024;
 	fdw_option->atomic_import = false;
 
@@ -307,6 +314,10 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 		else if (strcmp(def->defname, "table") == 0)
 		{
 			fdw_option->table = defGetString(def);
+		}
+		else if (strcmp(def->defname, "query") == 0)
+		{
+			fdw_option->query = defGetString(def);
 		}
 		else if (strcmp(def->defname, "import_file_size") == 0)
 		{
@@ -352,17 +363,22 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 	{
 		elog(ERROR, "treasuredata_fdw: database is required for treasuredata_fdw foreign tables");
 	}
-	if (fdw_option->table == NULL)
+	if (fdw_option->table == NULL && fdw_option->query == NULL)
 	{
-		elog(ERROR, "treasuredata_fdw: table is required for treasuredata_fdw foreign tables");
+		elog(ERROR, "treasuredata_fdw: table or query is required for treasuredata_fdw foreign tables");
+	}
+	if (fdw_option->table != NULL && fdw_option->query != NULL)
+	{
+		elog(ERROR, "treasuredata_fdw: both table and query can't be specified with treasuredata_fdw foreign tables");
 	}
 
-	elog(DEBUG1, "treasuredata_fdw: endpoint=%s, query_engine=%s, apikey.len=%ld, database=%s, table=%s, import_file_size=%ld, atomic_import=%d",
+	elog(DEBUG1, "treasuredata_fdw: endpoint=%s, query_engine=%s, apikey.len=%ld, database=%s, table=%s, query=%s, import_file_size=%ld, atomic_import=%d",
 	     fdw_option->endpoint,
 	     fdw_option->query_engine,
 	     strlen(fdw_option->apikey),
 	     fdw_option->database,
 	     fdw_option->table,
+	     fdw_option->query,
 	     fdw_option->import_file_size,
 	     fdw_option->atomic_import);
 }

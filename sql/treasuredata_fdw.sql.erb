@@ -22,6 +22,19 @@ SELECT COUNT(1) FROM td_www_access WHERE method NOT LIKE '%ET' AND code NOT IN (
 SELECT COUNT(1) FROM td_www_access WHERE time in (SELECT MIN(time) FROM td_www_access);
 -- For https://github.com/komamitsu/treasuredata_fdw/issues/23
 SELECT COUNT(1) FROM (SELECT * FROM td_www_access LIMIT 1) x WHERE size > 0;
+CREATE FOREIGN TABLE td_summary_in_www_access (
+    code integer,
+    method varchar,
+    count integer
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'sample_datasets',
+    query_engine '<%= @query_engine %>',
+    query 'SELECT code, method, COUNT(1) as count FROM www_access GROUP BY code, method'
+);
+SELECT * FROM td_summary_in_www_access ORDER BY code, method;
+SELECT method, code FROM td_summary_in_www_access ORDER BY code, method;
 CREATE FOREIGN TABLE td_www_access_dst (
     time integer,
     code integer,
@@ -57,6 +70,7 @@ SERVER treasuredata_server OPTIONS (
 );
 SELECT * FROM td_array_test;
 DROP FOREIGN TABLE td_www_access_dst;
+DROP FOREIGN TABLE td_summary_in_www_access;
 DROP FOREIGN TABLE td_www_access;
 DROP FOREIGN TABLE td_array_test;
 DROP SERVER treasuredata_server;
