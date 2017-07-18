@@ -77,13 +77,11 @@ SERVER treasuredata_server OPTIONS (
     query_engine '<%= @query_engine %>',
     query 'SELECT code, method, COUNT(1) as count FROM www_access GROUP BY code, method'
 );
-SELECT * FROM td_summary_in_www_access ORDER BY code, method;
+SELECT * FROM td_summary_in_www_access WHERE method = 'GET' AND (code = 200 OR code = 404) ORDER BY code, method;
  code | method | count 
 ------+--------+-------
   200 | GET    |  4605
-  200 | POST   |   376
   404 | GET    |    17
-  500 | GET    |     2
 (4 rows)
 
 SELECT method, code FROM td_summary_in_www_access ORDER BY code, method;
