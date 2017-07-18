@@ -25,4 +25,4 @@ install: make && sudo make install
 
 script:
   - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress presto && make installcheck; fi'
-  - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress hive && make installcheck; fi'
+  - travis_wait 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress hive && make installcheck; fi'
