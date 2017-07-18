@@ -625,16 +625,19 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 	initStringInfo(&sql);
 	deparseSelectSql(&sql, root, baserel, fpinfo->attrs_used,
 	                 &retrieved_attrs, fpinfo->query_engine_type);
-	if (remote_conds)
-		appendWhereClause(&sql, root, baserel, remote_conds,
-		                  true, &params_list, fpinfo->query_engine_type);
 
 	/* Use a SQL specified as 'query' option param instead if it's enabled */
 	if (fdw_option.query != NULL)
 	{
 		initStringInfo(&sql);
+		appendStringInfoString(&sql, "SELECT * FROM ( ");
 		appendStringInfoString(&sql, fdw_option.query);
+		appendStringInfoString(&sql, " ) result ");
 	}
+
+	if (remote_conds)
+		appendWhereClause(&sql, root, baserel, remote_conds,
+		                  true, &params_list, fpinfo->query_engine_type);
 
 	/*
 	 * Add FOR UPDATE/SHARE if appropriate.  We apply locking during the
