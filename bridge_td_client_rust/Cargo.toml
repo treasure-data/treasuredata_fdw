@@ -7,9 +7,9 @@ authors = ["Mitsunori Komatsu <komamitsu@gmail.com>"]
 crate-type = ["staticlib"]
 
 [dependencies]
-hyper = '0.10'
+hyper = '0.9'
 libc = '0.1'
 retry = '0.4'
 time = '0.1'
 uuid = { version = "0.4", features = ["v4"] }
-td-client = '0.5'
+td-client = '0.6'
