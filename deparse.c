@@ -1565,7 +1565,7 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 
 	/* Deparse the function name ... */
 	proname = NameStr(procform->proname);
-	appendStringInfo(buf, "%s(", quote_identifier(proname));
+	appendStringInfo(buf, "%s(", proname);
 	/* ... and all the arguments */
 	first = true;
 	foreach(arg, node->args)
