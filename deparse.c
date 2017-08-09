@@ -1607,6 +1607,32 @@ deparseOpExpr(OpExpr *node, deparse_expr_cxt *context)
 	       (oprkind == 'l' && list_length(node->args) == 1) ||
 	       (oprkind == 'b' && list_length(node->args) == 2));
 
+	/* Hive doesn't support '||' operator */
+	if (context->query_engine_type == QUERY_ENGINE_HIVE)
+	{
+		char *opname = NameStr(form->oprname);
+		if (oprkind == 'b' && strcmp(opname, "||") == 0)
+		{
+			appendStringInfoString(buf, "CONCAT(");
+
+			/* Deparse left operand */
+			arg = list_head(node->args);
+			deparseExpr(lfirst(arg), context);
+
+			appendStringInfoString(buf, ", ");
+
+			/* Deparse right operand */
+			arg = list_tail(node->args);
+			deparseExpr(lfirst(arg), context);
+
+			appendStringInfoChar(buf, ')');
+
+			ReleaseSysCache(tuple);
+
+			return;
+		}
+	}
+
 	/* Always parenthesize the expression. */
 	appendStringInfoChar(buf, '(');
 

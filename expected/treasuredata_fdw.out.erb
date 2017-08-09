@@ -59,6 +59,12 @@ SELECT COUNT(1) FROM td_www_access WHERE time in (SELECT MIN(time) FROM td_www_a
      1
 (1 row)
 
+SELECT COUNT(1) FROM td_www_access WHERE SUBSTR(method, 1, 2) || SUBSTR(method, 3, 2) = 'POST';
+ count 
+-------
+   376
+(1 row)
+
 -- For https://github.com/komamitsu/treasuredata_fdw/issues/23
 SELECT COUNT(1) FROM (SELECT * FROM td_www_access LIMIT 1) x WHERE size > 0;
  count 
