@@ -125,6 +125,7 @@ static void printRemotePlaceholder(Oid paramtype, int32 paramtypmod,
                                    deparse_expr_cxt *context);
 static bool isAllowedFunction(FuncExpr *node);
 static char *td_quote_identifier(const char *s, QueryEngineType query_engine_type);
+static void td_deparse_string(StringInfo buf, const char *val, bool isstr);
 
 /*
  * Examine each qual clause in input_conds, and classify them into two groups,
@@ -1713,6 +1714,7 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 	Form_pg_operator form;
 	Expr	   *arg1;
 	Expr	   *arg2;
+	char	   *opname;
 
 	/* Retrieve information about the operator from system catalog. */
 	tuple = SearchSysCache1(OPEROID, ObjectIdGetDatum(node->opno));
@@ -1723,25 +1725,57 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 	/* Sanity check. */
 	Assert(list_length(node->args) == 2);
 
-	/* Always parenthesize the expression. */
-	appendStringInfoChar(buf, '(');
+	opname = NameStr(form->oprname);
+	if (strcmp(opname, "=") != 0 || !node->useOr)
+	{
+		elog(ERROR, "ANY/SOME with other than '=' and ALL are not supported yet");
+	}
 
 	/* Deparse left operand. */
 	arg1 = linitial(node->args);
 	deparseExpr(arg1, context);
-	appendStringInfoChar(buf, ' ');
 
-	/* Deparse operator name plus decoration. */
-	deparseOperatorName(buf, form);
-	appendStringInfo(buf, " %s (", node->useOr ? "ANY" : "ALL");
+	appendStringInfo(buf, " IN (");
 
 	/* Deparse right operand. */
 	arg2 = lsecond(node->args);
-	deparseExpr(arg2, context);
+	switch (nodeTag((Node*)arg2))
+	{
+		case T_Const:
+			{
+				Const *c = (Const*)arg2;
 
-	appendStringInfoChar(buf, ')');
+				if (!c->constisnull)
+				{
+					Oid  typoutput;
+					bool typIsVarlena;
+					char *extval;
 
-	/* Always parenthesize the expression. */
+					getTypeOutputInfo(c->consttype,
+					                  &typoutput, &typIsVarlena);
+					extval = OidOutputFunctionCall(typoutput, c->constvalue);
+
+					switch (c->consttype)
+					{
+						case INT4ARRAYOID:
+						case OIDARRAYOID:
+							td_deparse_string(buf, extval, false);
+							break;
+						default:
+							td_deparse_string(buf, extval, true);
+							break;
+					}
+				}
+				else
+				{
+					appendStringInfoString(buf, "NULL");
+				}
+			}
+			break;
+		default:
+			deparseExpr(arg2, context);
+			break;
+	}
 	appendStringInfoChar(buf, ')');
 
 	ReleaseSysCache(tuple);
@@ -2051,5 +2085,40 @@ td_quote_identifier(const char *s, QueryEngineType query_engine_type)
 
 		return result;
 	}
+}
+
+static void
+td_deparse_string(StringInfo buf, const char *val, bool isstr)
+{
+	const char *valptr;
+	int i = -1;
+
+	for (valptr = val; *valptr; valptr++)
+	{
+		char ch = *valptr;
+		i++;
+
+		if (i == 0 && isstr)
+			appendStringInfoChar(buf, '\'');
+
+		/*
+		 * Remove '{', '}' and \" character from the string. Because
+		 * this syntax is not recognize by the remote server.
+		 */
+		if ((ch == '{' && i == 0) || (ch == '}' && (i == (strlen(val) - 1))) || ch == '\"')
+			continue;
+
+		if (ch == ',' && isstr)
+		{
+			appendStringInfoChar(buf, '\'');
+			appendStringInfoChar(buf, ch);
+			appendStringInfoChar(buf, ' ');
+			appendStringInfoChar(buf, '\'');
+			continue;
+		}
+		appendStringInfoChar(buf, ch);
+	}
+	if (isstr)
+		appendStringInfoChar(buf, '\'');
 }
 
