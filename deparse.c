@@ -1773,7 +1773,7 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 			}
 			break;
 		default:
-			deparseExpr(arg2, context);
+			elog(ERROR, "Right operand should be a constant array");
 			break;
 	}
 	appendStringInfoChar(buf, ')');
