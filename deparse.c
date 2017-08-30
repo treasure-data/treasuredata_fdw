@@ -1731,19 +1731,23 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 		elog(ERROR, "ANY/SOME with other than '=' and ALL are not supported yet");
 	}
 
-	/* Deparse left operand. */
+	/* Get arguments */
 	arg1 = linitial(node->args);
-	deparseExpr(arg1, context);
-
-	appendStringInfo(buf, " IN (");
-
-	/* Deparse right operand. */
 	arg2 = lsecond(node->args);
+
 	switch (nodeTag((Node*)arg2))
 	{
 		case T_Const:
 			{
-				Const *c = (Const*)arg2;
+				Const *c;
+
+				/* Deparse left operand. */
+				deparseExpr(arg1, context);
+
+				/* Deparse right operand. */
+				c = (Const*)arg2;
+
+				appendStringInfo(buf, " IN (");
 
 				if (!c->constisnull)
 				{
@@ -1770,13 +1774,29 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 				{
 					appendStringInfoString(buf, "NULL");
 				}
+				appendStringInfoChar(buf, ')');
 			}
 			break;
 		default:
-			elog(ERROR, "Right operand should be a constant array");
+			if (context->query_engine_type == QUERY_ENGINE_HIVE)
+			{
+				appendStringInfoString(buf, "array_contains(");
+			}
+			else
+			{
+				appendStringInfoString(buf, "contains(");
+			}
+
+			/* Deparse right operand. */
+			deparseExpr(arg2, context);
+			appendStringInfoString(buf, ", ");
+
+			/* Deparse left operand. */
+			deparseExpr(arg1, context);
+			appendStringInfoChar(buf, ')');
+
 			break;
 	}
-	appendStringInfoChar(buf, ')');
 
 	ReleaseSysCache(tuple);
 }

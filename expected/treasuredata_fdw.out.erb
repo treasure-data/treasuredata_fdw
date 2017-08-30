@@ -144,6 +144,12 @@ SELECT * FROM td_array_test;
  {one,two,three} | {1,2,3}   | {1000000000,2000000000,3000000000} | {1.1,2.2,3.3} | {1.111,2.222,3.333} | {{one,two},{three,four}} | {{1,2},{3,4}}   | {{1000000000,2000000000},{3000000000,4000000000}} | {{1.1,2.2},{3.3,4.4}} | {{1.111,2.222},{3.333,4.444}}
 (1 row)
 
+SELECT COUNT(1) FROM td_array_test WHERE 'two' = any(str_array);
+ count 
+-------
+     1
+(1 row)
+
 DROP FOREIGN TABLE td_www_access_dst;
 DROP FOREIGN TABLE td_summary_in_www_access;
 DROP FOREIGN TABLE td_www_access;
