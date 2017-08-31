@@ -47,7 +47,7 @@ SELECT COUNT(1) FROM td_www_access WHERE method LIKE '%ET' AND code = 200;
   4605
 (1 row)
 
-SELECT COUNT(1) FROM td_www_access WHERE method NOT LIKE '%ET' AND code NOT IN (404);
+SELECT COUNT(1) FROM td_www_access WHERE method NOT LIKE '%ET' AND code NOT IN (404, 409);
  count 
 -------
    376
