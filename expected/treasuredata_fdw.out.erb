@@ -4,6 +4,7 @@ CREATE SERVER treasuredata_server FOREIGN DATA WRAPPER treasuredata_fdw;
 CREATE FOREIGN TABLE td_www_access (
     time integer,
     code integer,
+    agent varchar,
     size integer,
     method varchar
 )
@@ -13,7 +14,7 @@ SERVER treasuredata_server OPTIONS (
     query_engine '<%= @query_engine %>',
     table 'www_access'
 );
-SELECT * FROM td_www_access ORDER BY TIME LIMIT 5;
+SELECT time, code, size, method FROM td_www_access ORDER BY TIME LIMIT 5;
     time    | code | size | method 
 ------------+------+------+--------
  1412320845 |  200 |   62 | GET
@@ -114,6 +115,7 @@ SELECT method, code FROM td_summary_in_www_access ORDER BY code, method;
 CREATE FOREIGN TABLE td_www_access_dst (
     time integer,
     code integer,
+    agent varchar,
     size integer,
     method varchar
 )
