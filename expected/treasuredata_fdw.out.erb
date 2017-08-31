@@ -4,6 +4,7 @@ CREATE SERVER treasuredata_server FOREIGN DATA WRAPPER treasuredata_fdw;
 CREATE FOREIGN TABLE td_www_access (
     time integer,
     code integer,
+    agent varchar,
     size integer,
     method varchar
 )
@@ -13,7 +14,7 @@ SERVER treasuredata_server OPTIONS (
     query_engine '<%= @query_engine %>',
     table 'www_access'
 );
-SELECT * FROM td_www_access ORDER BY TIME LIMIT 5;
+SELECT time, code, size, method FROM td_www_access ORDER BY TIME LIMIT 5;
     time    | code | size | method 
 ------------+------+------+--------
  1412320845 |  200 |   62 | GET
@@ -71,6 +72,12 @@ SELECT COUNT(1) FROM td_www_access WHERE SUBSTRING(method, 1, 2) || SUBSTR(metho
    376
 (1 row)
 
+SELECT COUNT(1) FROM td_www_access WHERE agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.6; rv:9.0.1) Gecko/20100101 Firefox/9.0.1' OR agent LIKE 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:10.0.1)%' OR agent IN ('Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)', 'Mozilla/5.0 (iPad; CPU OS 5_0_1 like Mac OS X) AppleWebKit/534.46 (KHTML, like Gecko) Version/5.1 Mobile/9A405 Safari/7534.48.3');
+ count 
+-------
+  1161
+(1 row)
+
 -- For https://github.com/komamitsu/treasuredata_fdw/issues/23
 SELECT COUNT(1) FROM (SELECT * FROM td_www_access LIMIT 1) x WHERE size > 0;
  count 
@@ -108,6 +115,7 @@ SELECT method, code FROM td_summary_in_www_access ORDER BY code, method;
 CREATE FOREIGN TABLE td_www_access_dst (
     time integer,
     code integer,
+    agent varchar,
     size integer,
     method varchar
 )
