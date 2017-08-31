@@ -463,6 +463,31 @@ foreign_expr_walker(Node *node,
 				         oe->inputcollid != inner_cxt.collation)
 					return false;
 
+				{
+					char	   *opname;
+					Form_pg_operator form;
+					/* Retrieve information about the operator from system catalog. */
+					HeapTuple tuple = SearchSysCache1(OPEROID, ObjectIdGetDatum(oe->opno));
+					if (!HeapTupleIsValid(tuple))
+						elog(ERROR, "cache lookup failed for operator %u", oe->opno);
+					form = (Form_pg_operator) GETSTRUCT(tuple);
+
+					opname = NameStr(form->oprname);
+					/*
+					 * x IN (a, b, c)     => opname:'=', node->useOr:true (Available on TD)
+					 * x NOT IN (a, b, c) => opname:'<>', node->useOr:false (Available on TD)
+					 * x = ANY('{a,b,c}') => opname:'=', node->useOr:true (Can be converted to `IN`)
+					 *
+					 * Other than the above are not supported
+					 */
+					if (!(strcmp(opname, "=") == 0 && oe->useOr) && !(strcmp(opname, "<>") == 0 && !oe->useOr))
+					{
+						elog(DEBUG1, "Unsupported operator combination in scalar array. opname=[%s], node->useOr=%d", opname, oe->useOr);
+						ReleaseSysCache(tuple);
+						return false;
+					}
+					ReleaseSysCache(tuple);
+				}
 				/* Output is always boolean and so noncollatable. */
 				collation = InvalidOid;
 				state = FDW_COLLATE_NONE;
@@ -1738,14 +1763,6 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 	Assert(list_length(node->args) == 2);
 
 	opname = NameStr(form->oprname);
-	/*
-	 * x IN (a, b, c)     => opname:'=', node->useOr:true
-	 * x NOT IN (a, b, c) => opname:'<>', node->useOr:false
-	 * x = ANY('{a,b,c}') => opname:'=', node->useOr:true
-	 * x = ALL('{a,b,c}') => opname:'=', node->useOr:false (Not supported)
-	 */
-	if (!(strcmp(opname, "=") == 0 && node->useOr) && !(strcmp(opname, "<>") == 0 && !node->useOr))
-		elog(ERROR, "Unsupported operator combination in scalar array. opname=[%s], node->useOr=%d", opname, node->useOr);
 
 	/* Get arguments */
 	arg1 = linitial(node->args);
