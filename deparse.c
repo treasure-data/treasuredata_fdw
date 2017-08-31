@@ -1726,10 +1726,14 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 	Assert(list_length(node->args) == 2);
 
 	opname = NameStr(form->oprname);
-	if (strcmp(opname, "=") != 0 || !node->useOr)
-	{
-		elog(ERROR, "ANY/SOME with other than '=' and ALL are not supported yet");
-	}
+	/*
+	 * x IN (a, b, c)     => opname:'=', node->useOr:true
+	 * x NOT IN (a, b, c) => opname:'<>', node->useOr:false
+	 * x = ANY('{a,b,c}') => opname:'=', node->useOr:true
+	 * x = ALL('{a,b,c}') => opname:'=', node->useOr:false (Not supported)
+	 */
+	if (!(strcmp(opname, "=") == 0 && node->useOr) && !(strcmp(opname, "<>") == 0 && !node->useOr))
+		elog(ERROR, "Unsupported operator combination in scalar array. opname=[%s], node->useOr=%d", opname, node->useOr);
 
 	/* Get arguments */
 	arg1 = linitial(node->args);
@@ -1746,6 +1750,9 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 
 				/* Deparse right operand. */
 				c = (Const*)arg2;
+
+				if (strcmp(opname, "<>") == 0)
+					appendStringInfo(buf, " NOT");
 
 				appendStringInfo(buf, " IN (");
 
