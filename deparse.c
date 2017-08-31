@@ -125,7 +125,8 @@ static void printRemotePlaceholder(Oid paramtype, int32 paramtypmod,
                                    deparse_expr_cxt *context);
 static bool isAllowedFunction(FuncExpr *node);
 static char *td_quote_identifier(const char *s, QueryEngineType query_engine_type);
-static void td_deparse_string(StringInfo buf, const char *val, bool isstr);
+static void td_deparse_string(StringInfo buf, const char *val, bool isstr, bool workaround_hive_2409);
+static void deparseStringLiteralSupportHive2409(StringInfo buf, const char *val, bool workaround_hive_2409);
 
 /*
  * Examine each qual clause in input_conds, and classify them into two groups,
@@ -1185,6 +1186,12 @@ deparseRelation(StringInfo buf, Relation rel, QueryEngineType query_engine_type)
 void
 deparseStringLiteral(StringInfo buf, const char *val)
 {
+	deparseStringLiteralSupportHive2409(buf, val, false);
+}
+
+static void
+deparseStringLiteralSupportHive2409(StringInfo buf, const char *val, bool workaround_hive_2409)
+{
 	const char *valptr;
 
 	/*
@@ -1202,6 +1209,11 @@ deparseStringLiteral(StringInfo buf, const char *val)
 
 		if (SQL_STR_DOUBLE(ch, true))
 			appendStringInfoChar(buf, ch);
+
+		/* Workaround for https://issues.apache.org/jira/browse/HIVE-2409 */
+		if (workaround_hive_2409 && ch == ';')
+			appendStringInfoChar(buf, '\\');
+
 		appendStringInfoChar(buf, ch);
 	}
 	appendStringInfoChar(buf, '\'');
@@ -1391,7 +1403,7 @@ deparseConst(Const *node, deparse_expr_cxt *context)
 				appendStringInfoString(buf, "false");
 			break;
 		default:
-			deparseStringLiteral(buf, extval);
+			deparseStringLiteralSupportHive2409(buf, extval, context->query_engine_type == QUERY_ENGINE_HIVE);
 			break;
 	}
 #if 0
@@ -1761,6 +1773,7 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 					Oid  typoutput;
 					bool typIsVarlena;
 					char *extval;
+					bool workaround_hive_2409 = context->query_engine_type == QUERY_ENGINE_HIVE;
 
 					getTypeOutputInfo(c->consttype,
 					                  &typoutput, &typIsVarlena);
@@ -1770,10 +1783,10 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 					{
 						case INT4ARRAYOID:
 						case OIDARRAYOID:
-							td_deparse_string(buf, extval, false);
+							td_deparse_string(buf, extval, false, workaround_hive_2409);
 							break;
 						default:
-							td_deparse_string(buf, extval, true);
+							td_deparse_string(buf, extval, true, workaround_hive_2409);
 							break;
 					}
 				}
@@ -2115,7 +2128,7 @@ td_quote_identifier(const char *s, QueryEngineType query_engine_type)
 }
 
 static void
-td_deparse_string(StringInfo buf, const char *val, bool isstr)
+td_deparse_string(StringInfo buf, const char *val, bool isstr, bool workaround_hive_2409)
 {
 	const char *valptr;
 	int i = -1;
@@ -2150,6 +2163,11 @@ td_deparse_string(StringInfo buf, const char *val, bool isstr)
 			appendStringInfoChar(buf, '\'');
 			continue;
 		}
+
+		/* Workaround for https://issues.apache.org/jira/browse/HIVE-2409 */
+		if (workaround_hive_2409 && ch == ';')
+			appendStringInfoChar(buf, '\\');
+
 		appendStringInfoChar(buf, ch);
 	}
 	if (isstr)
