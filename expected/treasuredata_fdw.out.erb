@@ -53,10 +53,10 @@ SELECT COUNT(1) FROM td_www_access WHERE method NOT LIKE '%ET' AND code NOT IN (
    376
 (1 row)
 
-SELECT COUNT(1) FROM td_www_access WHERE code = ANY('{200,400}') AND method = SOME('{"",DELETE,GET}');
+SELECT COUNT(1) FROM td_www_access WHERE code = ANY('{200,400}') AND method = SOME('{"","DELETE,GET","POST"}');
  count 
 -------
-  4605
+   376
 (1 row)
 
 SELECT COUNT(1) FROM td_www_access WHERE time in (SELECT MIN(time) FROM td_www_access);
