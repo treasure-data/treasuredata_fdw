@@ -2119,6 +2119,7 @@ td_deparse_string(StringInfo buf, const char *val, bool isstr)
 {
 	const char *valptr;
 	int i = -1;
+	bool quoted = false;
 
 	for (valptr = val; *valptr; valptr++)
 	{
@@ -2132,10 +2133,16 @@ td_deparse_string(StringInfo buf, const char *val, bool isstr)
 		 * Remove '{', '}' and \" character from the string. Because
 		 * this syntax is not recognize by the remote server.
 		 */
-		if ((ch == '{' && i == 0) || (ch == '}' && (i == (strlen(val) - 1))) || ch == '\"')
+		if ((ch == '{' && i == 0) || (ch == '}' && (i == (strlen(val) - 1))))
 			continue;
 
-		if (ch == ',' && isstr)
+		if (ch == '\"')
+		{
+			quoted = !quoted;
+			continue;
+		}
+
+		if (!quoted && ch == ',' && isstr)
 		{
 			appendStringInfoChar(buf, '\'');
 			appendStringInfoChar(buf, ch);
