@@ -71,6 +71,8 @@ fn convert_str_from_raw_str<'a>(raw: *const c_char) -> &'a str {
 
 const RETRY_FIXED_INTERVAL_MILLI: u64 = 20000;
 const RETRY_COUNT: u64 = 30;
+// Very long query can take 24 hours
+const RETRY_COUNT_WAIT_JOB: u64 = 4320;
 
 fn convert_str_opt_from_raw_str<'a>(raw: *const c_char) -> Option<&'a str> {
     unsafe {
@@ -174,7 +176,7 @@ pub extern fn issue_query(
     match Retry::new(
             &mut || client.wait_job(job_id, None),
             &mut |result| test_if_needs_to_retry(result)
-        ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
+        ).try(RETRY_COUNT_WAIT_JOB).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
             Ok(Ok(JobStatus::Success)) => (),
             Ok(Ok(status)) => {
                 log!(error_log,
@@ -201,36 +203,26 @@ pub extern fn issue_query(
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        match Retry::new(
-            &mut || client.each_row_in_job_result(
-                job_id,
-                &|xs: Vec<Value>| match tx.send(Some(xs)) {
-                    Ok(()) => true,
-                    Err(err) => {
-                        log!(debug_log,
-                             "issue_query: Failed to put a result row into the queue. This error can happen when the query is already finished. job_id={:?}, error={:?}",
-                             job_id, err);
-                        // Stop processing result rows
-                        false
-                    }
-                }
-            ),
-            &mut |result| test_if_needs_to_retry(result)
-        ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
-            Ok(Ok(())) => match tx.send(None) {
-                Ok(()) => (),
+        match client.each_row_in_job_result(
+            job_id,
+            &|xs: Vec<Value>| match tx.send(Some(xs)) {
+                Ok(()) => true,
                 Err(err) => {
                     log!(debug_log,
-                         "issue_query: Failed to put a sentinel into the queue. This error can happen when the query is already finished. job_id={:?}, error={:?}",
-                         job_id, err)
+                         "issue_query: Failed to put a result row into the queue. This error can happen when the query is already finished. job_id={:?}, error={:?}",
+                         job_id, err);
+                    // Stop processing result rows
+                    false
                 }
+            }
+        ) {
+            Ok(()) => match tx.send(None) {
+                Ok(()) => (),
+                Err(err) => log!(debug_log,
+                                 "issue_query: Failed to put a sentinel into the queue. This error can happen when the query is already finished. job_id={:?}, error={:?}",
+                                 job_id, err)
             },
-            Ok(Err(err)) => log!(error_log,
-                                 "issue_query: Failed to fetch result. job_id={:?}, error={:?}",
-                                 job_id, err),
-            Err(err) => log!(error_log,
-                             "issue_query: Failed to fetch result. job_id={:?}, error={:?}",
-                             job_id, err)
+            Err(err) => log!(error_log, "Failed to fetch result. job_id={:?}, error={:?}", job_id, err)
         }
     });
 
