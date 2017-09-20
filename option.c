@@ -44,6 +44,7 @@ static const struct PgFdwOption valid_options[] =
 	{"database", ForeignTableRelationId},
 	{"table", ForeignTableRelationId},
 	{"query", ForeignTableRelationId},
+	{"query_download_dir", ForeignTableRelationId},
 	{"import_file_size", ForeignTableRelationId},
 	{"atomic_import", ForeignTableRelationId},
 
@@ -118,6 +119,7 @@ treasuredata_fdw_validator(PG_FUNCTION_ARGS)
 	char       *database = NULL;
 	char       *table = NULL;
 	char       *query = NULL;
+	char       *query_download_dir = NULL;
 	char       *import_file_size = NULL;
 	char       *atomic_import = NULL;
 	ListCell   *cell;
@@ -196,6 +198,15 @@ treasuredata_fdw_validator(PG_FUNCTION_ARGS)
 				         errmsg("conflicting or redundant options")));
 
 			query = defGetString(def);
+		}
+		else if (strcmp(def->defname, "query_download_dir") == 0)
+		{
+			if (query_download_dir)
+				ereport(ERROR,
+				        (errcode(ERRCODE_SYNTAX_ERROR),
+				         errmsg("conflicting or redundant options")));
+
+			query_download_dir = defGetString(def);
 		}
 		else if (strcmp(def->defname, "import_file_size") == 0)
 		{
@@ -288,6 +299,7 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 	fdw_option->database = NULL;
 	fdw_option->table = NULL;
 	fdw_option->query = NULL;
+	fdw_option->query_download_dir = NULL;
 	fdw_option->import_file_size = 128 * 1024 * 1024;
 	fdw_option->atomic_import = false;
 
@@ -318,6 +330,10 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 		else if (strcmp(def->defname, "query") == 0)
 		{
 			fdw_option->query = defGetString(def);
+		}
+		else if (strcmp(def->defname, "query_download_dir") == 0)
+		{
+			fdw_option->query_download_dir = defGetString(def);
 		}
 		else if (strcmp(def->defname, "import_file_size") == 0)
 		{
@@ -372,13 +388,14 @@ ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option)
 		elog(ERROR, "treasuredata_fdw: both table and query can't be specified with treasuredata_fdw foreign tables");
 	}
 
-	elog(DEBUG1, "treasuredata_fdw: endpoint=%s, query_engine=%s, apikey.len=%ld, database=%s, table=%s, query=%s, import_file_size=%ld, atomic_import=%d",
+	elog(DEBUG1, "treasuredata_fdw: endpoint=%s, query_engine=%s, apikey.len=%ld, database=%s, table=%s, query=%s, query_download_dir=%s, import_file_size=%ld, atomic_import=%d",
 	     fdw_option->endpoint,
 	     fdw_option->query_engine,
 	     strlen(fdw_option->apikey),
 	     fdw_option->database,
 	     fdw_option->table,
 	     fdw_option->query,
+	     fdw_option->query_download_dir,
 	     fdw_option->import_file_size,
 	     fdw_option->atomic_import);
 }

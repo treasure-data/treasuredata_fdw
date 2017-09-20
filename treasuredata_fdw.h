@@ -26,6 +26,7 @@ typedef struct TdFdwOption
 	char *database;      /* database name */
 	char *table;         /* target table name */
 	char *query;         /* static query */
+	char *query_download_dir; /* dir name to download a query result temporally. If it's null, stream processing */
 	long import_file_size; /* threshold size to split import files */
 	bool atomic_import;  /* flag of whether split imported files get visible atomically */
 }   TdFdwOption;

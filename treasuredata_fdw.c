@@ -839,7 +839,8 @@ treasuredataIterateForeignScan(ForeignScanState *node)
 		                         fdw_option.endpoint,
 		                         fdw_option.query_engine,
 		                         fdw_option.database,
-		                         fsstate->query);
+		                         fsstate->query,
+		                         fdw_option.query_download_dir);
 	}
 
 	tuple = make_tuple_from_result_row(
@@ -1571,7 +1572,8 @@ treasuredataEndForeignModify(EState *estate,
 		    fmstate->fdw_option.endpoint,
 		    fmstate->fdw_option.query_engine,
 		    fmstate->fdw_option.database,
-		    sql.data);
+		    sql.data,
+		    fmstate->fdw_option.query_download_dir);
 
 		deleteTable(
 		    fmstate->fdw_option.apikey,
