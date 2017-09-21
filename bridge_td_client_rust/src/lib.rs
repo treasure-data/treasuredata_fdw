@@ -6,7 +6,7 @@ extern crate uuid;
 extern crate td_client;
 use libc::{c_char, c_void};
 use std::ffi::CStr;
-use std::fs::File;
+use std::fs::{self, File};
 use std::path::Path;
 use std::ptr::null_mut;
 use std::str::FromStr;
@@ -119,6 +119,7 @@ fn test_if_needs_to_retry<T>(result: &Result<T, TreasureDataError>) -> bool {
 }
 
 #[no_mangle]
+#[allow(unused_must_use)]
 pub extern fn issue_query(
     raw_apikey: *const c_char,
     raw_endpoint: *const c_char,
@@ -223,7 +224,9 @@ pub extern fn issue_query(
             None => client.each_row_in_job_result(job_id, &f),
             Some(dl_dir) => {
                 let dir = Path::new(dl_dir);
-                // TODO: mkdir
+                // Just in case. Ignore the result since an error occurs when already exists
+                fs::create_dir(dir);
+
                 let path = dir.join(format!("{}.msgpack.gz", domain_key));
                 match File::create(&path) {
                     Ok(mut file) => {
@@ -235,8 +238,12 @@ pub extern fn issue_query(
                     Err(err) => log!(error_log, "Failed to create file. path={:?}, error={:?}", path, err)
                 }
                 match File::open(&path) {
-                    Ok(file) => client.each_row_in_job_result_file(&file, &f),
-                    // TODO: This error isn't 100% correct...
+                    Ok(file) => {
+                        let read = client.each_row_in_job_result_file(&file, &f);
+                        fs::remove_file(path);
+                        read
+                    },
+                    // TODO: This error isn't 100% correct and is something like workaround...
                     Err(err) => Err(TreasureDataError::IoError(err))
                 }
             }
