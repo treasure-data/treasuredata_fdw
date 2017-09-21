@@ -148,7 +148,7 @@ void *issueQuery(
 	           query_engine,
 	           database,
 	           query,
-               query_download_dir,
+	           query_download_dir,
 	           debug_log,
 	           error_log);
 }
