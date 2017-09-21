@@ -100,6 +100,7 @@ SERVER treasuredata_server OPTIONS (
     apikey '<%= @apikey %>',
     database 'sample_datasets',
     query_engine '<%= @query_engine %>',
+    query_download_dir '/tmp/tdfdw',
     query 'SELECT code, method, COUNT(1) as count FROM www_access GROUP BY code, method'
 );
 SELECT * FROM td_summary_in_www_access WHERE method = 'GET' AND (code = 200 OR code = 404) ORDER BY code, method;
