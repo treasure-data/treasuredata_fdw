@@ -84,7 +84,7 @@ CREATE FOREIGN TABLE nginx_status_summary (
     text varchar,
     cnt integer
 )
-SERVER td_server OPTIONS (
+SERVER treasuredata_server OPTIONS (
     apikey 'your_api_key',
     database 'api_staging',
     query_engine 'hive',
