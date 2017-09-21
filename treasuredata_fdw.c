@@ -264,8 +264,11 @@ static ForeignScan *treasuredataGetForeignPlan(PlannerInfo *root,
         Oid foreigntableid,
         ForeignPath *best_path,
         List *tlist,
-        List *scan_clauses,
-        Plan *outer_plan);
+        List *scan_clauses
+#if PG_VERSION_NUM >= 90500
+        , Plan *outer_plan
+#endif
+        );
 static void treasuredataBeginForeignScan(ForeignScanState *node, int eflags);
 static TupleTableSlot *treasuredataIterateForeignScan(ForeignScanState *node);
 // static void treasuredataReScanForeignScan(ForeignScanState *node);
@@ -556,8 +559,11 @@ treasuredataGetForeignPlan(PlannerInfo *root,
                            Oid foreigntableid,
                            ForeignPath *best_path,
                            List *tlist,
-                           List *scan_clauses,
-                           Plan *outer_plan)
+                           List *scan_clauses
+#if PG_VERSION_NUM >= 90500
+                           , Plan *outer_plan
+#endif
+                           )
 {
 	TdFdwRelationInfo *fpinfo = (TdFdwRelationInfo *) baserel->fdw_private;
 	Index		scan_relid = baserel->relid;
