@@ -52,6 +52,7 @@ extern void *issue_query(
     const char *query_engine,
     const char *database,
     const char *query,
+    const char *query_download_dir,
     void (*debug_log)(size_t, const char*),
     void (*error_log)(size_t, const char*)
 );
@@ -138,7 +139,8 @@ void *issueQuery(
     const char *endpoint,
     const char *query_engine,
     const char *database,
-    const char *query)
+    const char *query,
+    const char *query_download_dir)
 {
 	return issue_query(
 	           apikey,
@@ -146,6 +148,7 @@ void *issueQuery(
 	           query_engine,
 	           database,
 	           query,
+	           query_download_dir,
 	           debug_log,
 	           error_log);
 }

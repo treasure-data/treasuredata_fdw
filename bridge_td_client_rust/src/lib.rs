@@ -6,6 +6,8 @@ extern crate uuid;
 extern crate td_client;
 use libc::{c_char, c_void};
 use std::ffi::CStr;
+use std::fs::{self, File};
+use std::path::Path;
 use std::ptr::null_mut;
 use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, RecvError};
@@ -117,12 +119,14 @@ fn test_if_needs_to_retry<T>(result: &Result<T, TreasureDataError>) -> bool {
 }
 
 #[no_mangle]
+#[allow(unused_must_use)]
 pub extern fn issue_query(
     raw_apikey: *const c_char,
     raw_endpoint: *const c_char,
     raw_query_engine: *const c_char,
     raw_database: *const c_char,
     raw_query: *const c_char,
+    raw_query_download_dir: *const c_char,
     debug_log: extern fn(usize, &[u8]),
     error_log: extern fn(usize, &[u8])) -> *mut TdQueryState {
 
@@ -131,6 +135,7 @@ pub extern fn issue_query(
     let query_engine = convert_str_from_raw_str(raw_query_engine);
     let database = convert_str_from_raw_str(raw_database);
     let query = convert_str_from_raw_str(raw_query);
+    let query_download_dir = convert_str_opt_from_raw_str(raw_query_download_dir);
     let domain_key = Uuid::new_v4();
 
     log!(debug_log, "issue_query: entering");
@@ -139,6 +144,7 @@ pub extern fn issue_query(
     log!(debug_log, "issue_query: query_engine={:?}", query_engine);
     log!(debug_log, "issue_query: database={:?}", database);
     log!(debug_log, "issue_query: query={:?}", query);
+    log!(debug_log, "issue_query: query_download_dir={:?}", query_download_dir);
     log!(debug_log, "issue_query: domain_key={:?}", domain_key);
 
     let client = create_client(apikey, &endpoint);
@@ -203,19 +209,47 @@ pub extern fn issue_query(
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        match client.each_row_in_job_result(
-            job_id,
-            &|xs: Vec<Value>| match tx.send(Some(xs)) {
-                Ok(()) => true,
-                Err(err) => {
-                    log!(debug_log,
-                         "issue_query: Failed to put a result row into the queue. This error can happen when the query is already finished. job_id={:?}, error={:?}",
-                         job_id, err);
-                    // Stop processing result rows
-                    false
+        let f = |xs: Vec<Value>| match tx.send(Some(xs)) {
+            Ok(()) => true,
+            Err(err) => {
+                log!(debug_log,
+                     "issue_query: Failed to put a result row into the queue. This error can happen when the query is already finished. job_id={:?}, error={:?}",
+                     job_id, err);
+                // Stop processing result rows
+                false
+            }
+        };
+
+        let read = match query_download_dir {
+            None => client.each_row_in_job_result(job_id, &f),
+            Some(dl_dir) => {
+                let dir = Path::new(dl_dir);
+                // Just in case. Ignore the result since an error occurs when already exists
+                fs::create_dir(dir);
+
+                let path = dir.join(format!("{}.msgpack.gz", domain_key));
+                match File::create(&path) {
+                    Ok(mut file) => {
+                        match client.download_job_result(job_id, &mut file) {
+                            Ok(()) => (),
+                            Err(err) => log!(error_log, "Failed to download query result file. path={:?}, error={:?}", path, err)
+                        }
+                    },
+                    Err(err) => log!(error_log, "Failed to create file. path={:?}, error={:?}", path, err)
+                }
+                match File::open(&path) {
+                    Ok(file) => {
+                        let read = client.each_row_in_job_result_file(&file, &f);
+                        fs::remove_file(path);
+                        read
+                    },
+                    // TODO: This error isn't 100% correct and is something like workaround...
+                    Err(err) => Err(TreasureDataError::IoError(err))
                 }
             }
-        ) {
+        };
+
+        match read {
             Ok(()) => match tx.send(None) {
                 Ok(()) => (),
                 Err(err) => log!(debug_log,
