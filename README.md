@@ -141,6 +141,7 @@ SERVER treasuredata_fdw OPTIONS (
 - table : Table name on Treasure Data that the foreign table corresponds to. This option can't be used with `query` option.
 - query: SELECT statement that is sent to Treasure Data directly. The SQL needs to be a valid Presto/Hive query on Treasure Data and return the same column names as columns of the foreign table. Also, this FDW with this option doesn't support INSERT statement. This option can't be used with `table` option.
 - query_engine : Query engine name (`presto` or `hive`) that queries on the foreign table use.
+- query_download_dir : If it's set, a query result is downloaded to the specified directory first and then each row is fetched from the downloaded file. If it's not set, query result rows are directly fetched from stream. This option can be useful when a result file is large and a TCP connection might be disconnected during streaming fetch. The default value is not set (= streaming fetch).
 - endpoint: Treasure Data's API endpoint (optional).
 - import_file_size : Approximate maximum size of chunk files uploaded to Treasure Data. The default value is `134217728` (128MB).
 - atomic_import : Flag (`true` or `false`) of whether uploaded chunk files get visible atomically. The default value is `false`
