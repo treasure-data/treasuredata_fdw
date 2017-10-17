@@ -91,6 +91,21 @@ SELECT COUNT(1) FROM (SELECT * FROM td_www_access LIMIT 1) x WHERE size > 0;
      1
 (1 row)
 
+BEGIN;
+DECLARE cur CURSOR FOR SELECT time FROM td_www_access WHERE time < 1412320911 ORDER BY time;
+FETCH cur;
+    time    
+------------
+ 1412320845
+(1 row)
+
+FETCH cur;
+    time    
+------------
+ 1412320861
+(1 row)
+
+COMMIT;
 CREATE FOREIGN TABLE td_summary_in_www_access (
     code integer,
     method varchar,
