@@ -107,8 +107,7 @@ enum FdwScanPrivateIndex
 	/* SQL statement to execute remotely (as a String node) */
 	FdwScanPrivateSelectSql,
 	/* Integer list of attribute numbers retrieved by the SELECT */
-	FdwScanPrivateRetrievedAttrs,
-	FdwScanPrivateForeignTable
+	FdwScanPrivateRetrievedAttrs
 };
 
 /*
@@ -268,7 +267,7 @@ static ForeignScan *treasuredataGetForeignPlan(PlannerInfo *root,
 #if PG_VERSION_NUM >= 90500
         , Plan *outer_plan
 #endif
-        );
+                                              );
 static void treasuredataBeginForeignScan(ForeignScanState *node, int eflags);
 static TupleTableSlot *treasuredataIterateForeignScan(ForeignScanState *node);
 // static void treasuredataReScanForeignScan(ForeignScanState *node);
@@ -563,7 +562,7 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 #if PG_VERSION_NUM >= 90500
                            , Plan *outer_plan
 #endif
-                           )
+                          )
 {
 	TdFdwRelationInfo *fpinfo = (TdFdwRelationInfo *) baserel->fdw_private;
 	Index		scan_relid = baserel->relid;
@@ -700,10 +699,8 @@ treasuredataGetForeignPlan(PlannerInfo *root,
 	 * Build the fdw_private list that will be available to the executor.
 	 * Items in the list must match enum FdwScanPrivateIndex, above.
 	 */
-	fdw_private = list_make3(makeString(sql.data),
-	                         retrieved_attrs,
-	                         fpinfo->table
-	                        );
+	fdw_private = list_make2(makeString(sql.data),
+	                         retrieved_attrs);
 
 	/*
 	 * Create the ForeignScan node from target list, local filtering
@@ -762,9 +759,9 @@ treasuredataBeginForeignScan(ForeignScanState *node, int eflags)
 	                                 FdwScanPrivateSelectSql));
 	fsstate->retrieved_attrs = (List *) list_nth(fsplan->fdw_private,
 	                           FdwScanPrivateRetrievedAttrs);
-	fsstate->table = (ForeignTable *) list_nth(fsplan->fdw_private,
-	                 FdwScanPrivateForeignTable);
 
+	/* Get info about foreign table. */
+	fsstate->table = GetForeignTable(RelationGetRelid(node->ss.ss_currentRelation));
 
 	/* Create contexts for batches of tuples and per-tuple temp workspace. */
 #if 0
