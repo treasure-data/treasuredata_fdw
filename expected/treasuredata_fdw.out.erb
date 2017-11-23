@@ -66,6 +66,12 @@ SELECT COUNT(1) FROM td_www_access WHERE code > ANY('{200, 300}');
     19
 (1 row)
 
+SELECT COUNT(1) FROM td_www_access WHERE code = 200 AND method IN ('"', 'GET', 'POST');
+ count 
+-------
+  4981
+(1 row)
+
 SELECT COUNT(1) FROM td_www_access WHERE time in (SELECT MIN(time) FROM td_www_access);
  count 
 -------
@@ -106,6 +112,21 @@ FETCH cur;
 (1 row)
 
 COMMIT;
+CREATE FOREIGN TABLE td_quote_test (
+    val varchar
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'treasuredata_fdw',
+    query_engine '<%= @query_engine %>',
+    table 'quote_test'
+);
+SELECT COUNT(1) FROM td_quote_test WHERE val IN ('xxx', '''abc''');
+ count 
+-------
+     1
+(1 row)
+
 CREATE FOREIGN TABLE td_summary_in_www_access (
     code integer,
     method varchar,
@@ -183,6 +204,7 @@ SELECT COUNT(1) FROM td_array_test WHERE 'two' = any(str_array);
 DROP FOREIGN TABLE td_www_access_dst;
 DROP FOREIGN TABLE td_summary_in_www_access;
 DROP FOREIGN TABLE td_www_access;
+DROP FOREIGN TABLE td_quote_test;
 DROP FOREIGN TABLE td_array_test;
 DROP SERVER treasuredata_server;
 DROP EXTENSION treasuredata_fdw CASCADE;
