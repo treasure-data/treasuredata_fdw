@@ -125,7 +125,7 @@ static void printRemotePlaceholder(Oid paramtype, int32 paramtypmod,
                                    deparse_expr_cxt *context);
 static bool isAllowedFunction(FuncExpr *node);
 static char *td_quote_identifier(const char *s, QueryEngineType query_engine_type);
-static void td_deparse_string(StringInfo buf, const char *val, bool isstr, bool workaround_hive_2409);
+static void td_deparse_string(StringInfo buf, const char *val, bool is_str, bool workaround_hive_2409);
 static void deparseStringLiteralSupportHive2409(StringInfo buf, const char *val, bool workaround_hive_2409);
 
 /*
@@ -2145,49 +2145,81 @@ td_quote_identifier(const char *s, QueryEngineType query_engine_type)
 }
 
 static void
-td_deparse_string(StringInfo buf, const char *val, bool isstr, bool workaround_hive_2409)
+td_deparse_string(StringInfo buf, const char *val, bool is_str, bool workaround_hive_2409)
 {
 	const char *valptr;
 	int i = -1;
-	bool quoted = false;
+	bool in_quotes = false;
+	bool in_escape_seq = false;
 
-	for (valptr = val; *valptr; valptr++)
+    if (is_str)
+        appendStringInfoChar(buf, '\'');
+
+    for (valptr = val; *valptr; valptr++)
 	{
 		char ch = *valptr;
 		i++;
 
-		if (i == 0 && isstr)
-			appendStringInfoChar(buf, '\'');
-
-		/*
-		 * Remove '{', '}' and \" character from the string. Because
-		 * this syntax is not recognize by the remote server.
-		 */
-		if ((ch == '{' && i == 0) || (ch == '}' && (i == (strlen(val) - 1))))
-			continue;
-
-		if (ch == '\"')
+		if (in_escape_seq)
 		{
-			quoted = !quoted;
-			continue;
-		}
-
-		if (!quoted && ch == ',' && isstr)
-		{
-			appendStringInfoChar(buf, '\'');
+			/* If the previous character is an escape character, just output this character as is */
+			in_escape_seq = false;
 			appendStringInfoChar(buf, ch);
-			appendStringInfoChar(buf, ' ');
-			appendStringInfoChar(buf, '\'');
 			continue;
 		}
 
-		/* Workaround for https://issues.apache.org/jira/browse/HIVE-2409 */
-		if (workaround_hive_2409 && ch == ';')
-			appendStringInfoChar(buf, '\\');
+		switch (ch)
+		{
+			case '{':
+				/* Remove head '{' because this syntax is not recognize by the remote server */
+				if (i != 0)
+					appendStringInfoChar(buf, ch);
+				break;
 
-		appendStringInfoChar(buf, ch);
+			case '}':
+				/* Remove tail '}' because this syntax is not recognize by the remote server */
+				if (i != (strlen(val) - 1))
+					appendStringInfoChar(buf, ch);
+				break;
+
+			case '\"':
+				/* Consider if current character is in a string */
+				in_quotes = !in_quotes;
+				break;
+
+			case ',':
+				/* Handle it as a delimiter when not in a quoted string */
+				if (is_str && !in_quotes)
+				{
+					appendStringInfoChar(buf, '\'');
+					appendStringInfoChar(buf, ch);
+					appendStringInfoChar(buf, ' ');
+					appendStringInfoChar(buf, '\'');
+					continue;
+				}
+				else
+					appendStringInfoChar(buf, ch);
+
+				break;
+
+			case ';':
+				if (workaround_hive_2409)
+					appendStringInfoChar(buf, '\\');
+
+				appendStringInfoChar(buf, ch);
+				break;
+
+			case '\\':
+				in_escape_seq = true;
+				break;
+
+			default:
+				appendStringInfoChar(buf, ch);
+				break;
+		}
 	}
-	if (isstr)
+
+	if (is_str)
 		appendStringInfoChar(buf, '\'');
 }
 
