@@ -1428,7 +1428,7 @@ deparseConst(Const *node, deparse_expr_cxt *context)
 				appendStringInfoString(buf, "false");
 			break;
 		default:
-			deparseStringLiteralSupportHive2409(buf, extval, context->query_engine_type == QUERY_ENGINE_HIVE);
+			deparseStringLiteralForQueryEngineType(buf, extval, context->query_engine_type);
 			break;
 	}
 #if 0
