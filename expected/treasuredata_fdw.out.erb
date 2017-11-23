@@ -66,6 +66,12 @@ SELECT COUNT(1) FROM td_www_access WHERE code > ANY('{200, 300}');
     19
 (1 row)
 
+SELECT COUNT(1) FROM td_www_access WHERE code = 200 AND method IN ('"', 'GET', 'POST');
+ count 
+-------
+  4981
+(1 row)
+
 SELECT COUNT(1) FROM td_www_access WHERE time in (SELECT MIN(time) FROM td_www_access);
  count 
 -------
