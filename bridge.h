@@ -13,6 +13,11 @@
 #ifndef TREASUREDATA_FDW_BRIDGE_H
 #define TREASUREDATA_FDW_BRIDGE_H
 
+#ifndef WITHOUT_PG
+#include "c.h"
+#include "nodes/pg_list.h"
+#endif
+
 extern void* issueQuery(
     const char *apikey,
     const char *endpoint,
@@ -69,6 +74,16 @@ extern void *importBegin(
 extern size_t importAppend(void *import_state, const char **values);
 
 extern void importCommit(void *import_state);
+
+#ifndef WITHOUT_PG
+List *importSchema(
+	const char *apikey,
+    const char *endpoint,
+	const char *query_engine,
+	const char *database,
+	const char *server,
+	List *commands);
+#endif
 
 #endif   /* TREASUREDATA_FDW_BRIDGE_H */
 

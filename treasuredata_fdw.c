@@ -310,9 +310,10 @@ static void treasuredataExplainForeignModify(ModifyTableState *mtstate,
 static bool treasuredataAnalyzeForeignTable(Relation relation,
         AcquireSampleRowsFunc *func,
         BlockNumber *totalpages);
+#endif
 static List *treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt,
         Oid serverOid);
-#endif
+
 
 /*
  * Helper functions
@@ -391,10 +392,10 @@ treasuredata_fdw_handler(PG_FUNCTION_ARGS)
 
 	/* Support functions for ANALYZE */
 	routine->AnalyzeForeignTable = treasuredataAnalyzeForeignTable;
-
+#endif
 	/* Support functions for IMPORT FOREIGN SCHEMA */
 	routine->ImportForeignSchema = treasuredataImportForeignSchema;
-#endif
+
 	PG_RETURN_POINTER(routine);
 }
 
@@ -2259,6 +2260,7 @@ analyze_row_processor(PGresult *res, int row, TdFdwAnalyzeState *astate)
 		MemoryContextSwitchTo(oldcontext);
 	}
 }
+#endif
 
 /*
  * Import a foreign schema
@@ -2266,268 +2268,55 @@ analyze_row_processor(PGresult *res, int row, TdFdwAnalyzeState *astate)
 static List *
 treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 {
-	List	   *commands = NIL;
-	bool		import_collate = true;
-	bool		import_default = false;
-	bool		import_not_null = true;
-	ForeignServer *server;
-	UserMapping *mapping;
-	PGconn	   *conn;
-	StringInfoData buf;
-	PGresult   *volatile res = NULL;
-	int			numrows,
-	            i;
-	ListCell   *lc;
+	List		*commands = NIL;
+	char		*endpoint = NULL;
+	char		*query_engine = NULL;
+	char		*apikey = NULL;
+	ListCell	*lc = NULL;
 
 	/* Parse statement options */
 	foreach(lc, stmt->options)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
 
-		if (strcmp(def->defname, "import_collate") == 0)
-			import_collate = defGetBoolean(def);
-		else if (strcmp(def->defname, "import_default") == 0)
-			import_default = defGetBoolean(def);
-		else if (strcmp(def->defname, "import_not_null") == 0)
-			import_not_null = defGetBoolean(def);
+		if (strcmp(def->defname, "apikey") == 0)
+			apikey = defGetString(def);
+		else if (strcmp(def->defname, "endpoint") == 0)
+			endpoint = defGetString(def);
+		else if (strcmp(def->defname, "query_engine") == 0)
+			query_engine = defGetString(def);
 		else
 			ereport(ERROR,
 			        (errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
 			         errmsg("invalid option \"%s\"", def->defname)));
 	}
 
-	/*
-	 * Get connection to the foreign server.  Connection manager will
-	 * establish new connection if necessary.
-	 */
-	server = GetForeignServer(serverOid);
-	mapping = GetUserMapping(GetUserId(), server->serverid);
-	conn = GetConnection(server, mapping, false);
+	/* Validate options */
+	if (apikey == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FDW_DYNAMIC_PARAMETER_VALUE_NEEDED),
+				 errmsg("apikey is required for treasuredata_fdw foreign tables")));
+	if (query_engine == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FDW_DYNAMIC_PARAMETER_VALUE_NEEDED),
+				 errmsg("query_engine is required for treasuredata_fdw foreign tables")));
 
-	/* Don't attempt to import collation if remote server hasn't got it */
-	if (PQserverVersion(conn) < 90100)
-		import_collate = false;
+	ereport(DEBUG1,
+			(errmsg("apikey: %s, endpoint: %s, query_engine: %s",
+					apikey, endpoint, query_engine)));
+	ereport(DEBUG1,
+			(errmsg("remote_database: %s, server: %s",
+					stmt->remote_schema, stmt->server_name)));
 
-	/* Create workspace for strings */
-	initStringInfo(&buf);
+	commands = importSchema(apikey, endpoint, query_engine, stmt->remote_schema,
+							stmt->server_name, commands);
 
-	/* In what follows, do not risk leaking any PGresults. */
-	PG_TRY();
-	{
-		/* Check that the schema really exists */
-		appendStringInfoString(&buf, "SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = ");
-		deparseStringLiteral(&buf, stmt->remote_schema);
-
-		res = PQexec(conn, buf.data);
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-			pgfdw_report_error(ERROR, res, conn, false, buf.data);
-
-		if (PQntuples(res) != 1)
-			ereport(ERROR,
-			        (errcode(ERRCODE_FDW_SCHEMA_NOT_FOUND),
-			         errmsg("schema \"%s\" is not present on foreign server \"%s\"",
-			                stmt->remote_schema, server->servername)));
-
-		PQclear(res);
-		res = NULL;
-		resetStringInfo(&buf);
-
-		/*
-		 * Fetch all table data from this schema, possibly restricted by
-		 * EXCEPT or LIMIT TO.  (We don't actually need to pay any attention
-		 * to EXCEPT/LIMIT TO here, because the core code will filter the
-		 * statements we return according to those lists anyway.  But it
-		 * should save a few cycles to not process excluded tables in the
-		 * first place.)
-		 *
-		 * Note: because we run the connection with search_path restricted to
-		 * pg_catalog, the format_type() and pg_get_expr() outputs will always
-		 * include a schema name for types/functions in other schemas, which
-		 * is what we want.
-		 */
-		if (import_collate)
-			appendStringInfoString(&buf,
-			                       "SELECT relname, "
-			                       "  attname, "
-			                       "  format_type(atttypid, atttypmod), "
-			                       "  attnotnull, "
-			                       "  pg_get_expr(adbin, adrelid), "
-			                       "  collname, "
-			                       "  collnsp.nspname "
-			                       "FROM pg_class c "
-			                       "  JOIN pg_namespace n ON "
-			                       "    relnamespace = n.oid "
-			                       "  LEFT JOIN pg_attribute a ON "
-			                       "    attrelid = c.oid AND attnum > 0 "
-			                       "      AND NOT attisdropped "
-			                       "  LEFT JOIN pg_attrdef ad ON "
-			                       "    adrelid = c.oid AND adnum = attnum "
-			                       "  LEFT JOIN pg_collation coll ON "
-			                       "    coll.oid = attcollation "
-			                       "  LEFT JOIN pg_namespace collnsp ON "
-			                       "    collnsp.oid = collnamespace ");
-		else
-			appendStringInfoString(&buf,
-			                       "SELECT relname, "
-			                       "  attname, "
-			                       "  format_type(atttypid, atttypmod), "
-			                       "  attnotnull, "
-			                       "  pg_get_expr(adbin, adrelid), "
-			                       "  NULL, NULL "
-			                       "FROM pg_class c "
-			                       "  JOIN pg_namespace n ON "
-			                       "    relnamespace = n.oid "
-			                       "  LEFT JOIN pg_attribute a ON "
-			                       "    attrelid = c.oid AND attnum > 0 "
-			                       "      AND NOT attisdropped "
-			                       "  LEFT JOIN pg_attrdef ad ON "
-			                       "    adrelid = c.oid AND adnum = attnum ");
-
-		appendStringInfoString(&buf,
-		                       "WHERE c.relkind IN ('r', 'v', 'f', 'm') "
-		                       "  AND n.nspname = ");
-		deparseStringLiteral(&buf, stmt->remote_schema);
-
-		/* Apply restrictions for LIMIT TO and EXCEPT */
-		if (stmt->list_type == FDW_IMPORT_SCHEMA_LIMIT_TO ||
-		        stmt->list_type == FDW_IMPORT_SCHEMA_EXCEPT)
-		{
-			bool		first_item = true;
-
-			appendStringInfoString(&buf, " AND c.relname ");
-			if (stmt->list_type == FDW_IMPORT_SCHEMA_EXCEPT)
-				appendStringInfoString(&buf, "NOT ");
-			appendStringInfoString(&buf, "IN (");
-
-			/* Append list of table names within IN clause */
-			foreach(lc, stmt->table_list)
-			{
-				RangeVar   *rv = (RangeVar *) lfirst(lc);
-
-				if (first_item)
-					first_item = false;
-				else
-					appendStringInfoString(&buf, ", ");
-				deparseStringLiteral(&buf, rv->relname);
-			}
-			appendStringInfoChar(&buf, ')');
-		}
-
-		/* Append ORDER BY at the end of query to ensure output ordering */
-		appendStringInfoString(&buf, " ORDER BY c.relname, a.attnum");
-
-		/* Fetch the data */
-		res = PQexec(conn, buf.data);
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-			pgfdw_report_error(ERROR, res, conn, false, buf.data);
-
-		/* Process results */
-		numrows = PQntuples(res);
-		/* note: incrementation of i happens in inner loop's while() test */
-		for (i = 0; i < numrows;)
-		{
-			char	   *tablename = PQgetvalue(res, i, 0);
-			bool		first_item = true;
-
-			resetStringInfo(&buf);
-			appendStringInfo(&buf, "CREATE FOREIGN TABLE %s (\n",
-			                 quote_identifier(tablename));
-
-			/* Scan all rows for this table */
-			do
-			{
-				char	   *attname;
-				char	   *typename;
-				char	   *attnotnull;
-				char	   *attdefault;
-				char	   *collname;
-				char	   *collnamespace;
-
-				/* If table has no columns, we'll see nulls here */
-				if (PQgetisnull(res, i, 1))
-					continue;
-
-				attname = PQgetvalue(res, i, 1);
-				typename = PQgetvalue(res, i, 2);
-				attnotnull = PQgetvalue(res, i, 3);
-				attdefault = PQgetisnull(res, i, 4) ? (char *) NULL :
-				             PQgetvalue(res, i, 4);
-				collname = PQgetisnull(res, i, 5) ? (char *) NULL :
-				           PQgetvalue(res, i, 5);
-				collnamespace = PQgetisnull(res, i, 6) ? (char *) NULL :
-				                PQgetvalue(res, i, 6);
-
-				if (first_item)
-					first_item = false;
-				else
-					appendStringInfoString(&buf, ",\n");
-
-				/* Print column name and type */
-				appendStringInfo(&buf, "  %s %s",
-				                 quote_identifier(attname),
-				                 typename);
-
-				/*
-				 * Add column_name option so that renaming the foreign table's
-				 * column doesn't break the association to the underlying
-				 * column.
-				 */
-				appendStringInfoString(&buf, " OPTIONS (column_name ");
-				deparseStringLiteral(&buf, attname);
-				appendStringInfoChar(&buf, ')');
-
-				/* Add COLLATE if needed */
-				if (import_collate && collname != NULL && collnamespace != NULL)
-					appendStringInfo(&buf, " COLLATE %s.%s",
-					                 quote_identifier(collnamespace),
-					                 quote_identifier(collname));
-
-				/* Add DEFAULT if needed */
-				if (import_default && attdefault != NULL)
-					appendStringInfo(&buf, " DEFAULT %s", attdefault);
-
-				/* Add NOT NULL if needed */
-				if (import_not_null && attnotnull[0] == 't')
-					appendStringInfoString(&buf, " NOT NULL");
-			}
-			while (++i < numrows &&
-			        strcmp(PQgetvalue(res, i, 0), tablename) == 0);
-
-			/*
-			 * Add server name and table-level options.  We specify remote
-			 * schema and table name as options (the latter to ensure that
-			 * renaming the foreign table doesn't break the association).
-			 */
-			appendStringInfo(&buf, "\n) SERVER %s\nOPTIONS (",
-			                 quote_identifier(server->servername));
-
-			appendStringInfoString(&buf, "schema_name ");
-			deparseStringLiteral(&buf, stmt->remote_schema);
-			appendStringInfoString(&buf, ", table_name ");
-			deparseStringLiteral(&buf, tablename);
-
-			appendStringInfoString(&buf, ");");
-
-			commands = lappend(commands, pstrdup(buf.data));
-		}
-
-		/* Clean up */
-		PQclear(res);
-		res = NULL;
-	}
-	PG_CATCH();
-	{
-		if (res)
-			PQclear(res);
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	ReleaseConnection(conn);
+	ereport(DEBUG1,
+			(errmsg("number of import commands: %d",
+					list_length(commands))));
 
 	return commands;
 }
-#endif
 
 /*
  * Create a tuple from the specified row of the PGresult.

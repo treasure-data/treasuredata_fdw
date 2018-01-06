@@ -3,6 +3,8 @@ extern crate libc;
 extern crate retry;
 extern crate time;
 extern crate uuid;
+extern crate serde;
+extern crate serde_json;
 extern crate td_client;
 use libc::{c_char, c_void};
 use std::ffi::CStr;
@@ -757,7 +759,7 @@ pub extern fn import_commit(
         Ok(readable_chunk) => {
             match Retry::new(
                 &mut || client.import_msgpack_gz_file_to_table(
-                            database, table,
+                             database, table,
                             &readable_chunk.file_path.as_str(),
                             Some(uuid.simple().to_string().as_str())),
                 &mut |result| test_if_needs_to_retry(result)
@@ -778,4 +780,127 @@ pub extern fn import_commit(
     };
 
     log!(debug_log, "import_commit: exiting");
+}
+
+#[no_mangle]
+pub extern fn import_schema(
+    raw_apikey: *const c_char,
+    raw_endpoint: *const c_char,
+    raw_query_engine: *const c_char,
+    raw_database: *const c_char,
+    raw_server: *const c_char,
+    mut commands: *mut c_void,
+    plappend: extern fn(*mut c_void, usize, &[u8]) -> *mut c_void,
+    cfunc_debug_log: extern fn(usize, &[u8]),
+    cfunc_error_log: extern fn(usize, &[u8])) -> *mut c_void {
+
+    let apikey = convert_str_from_raw_str(raw_apikey);
+    let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
+    let query_engine = convert_str_from_raw_str(raw_query_engine);
+    let database = convert_str_from_raw_str(raw_database);
+    let server = convert_str_from_raw_str(raw_server);
+
+    let debug_log = |len: usize, msg: &[u8]| cfunc_debug_log(len, msg);
+    let error_log = |len: usize, msg: &[u8]| cfunc_error_log(len, msg);
+
+    match import_schema_internal(apikey, endpoint, query_engine, database,
+                                 server, &debug_log, &error_log) {
+        Ok(queries) => {
+            for query in &queries {
+                let query_byte = query.as_bytes();
+                commands = plappend(commands, query_byte.len(), query_byte);
+            }
+            commands
+        },
+        Err(_) => null_mut()
+    }
+}
+
+fn import_schema_internal<F, G>(
+    apikey: &str,
+    endpoint: Option<&str>,
+    query_engine: &str,
+    database: &str,
+    server: &str,
+    debug_log: F,
+    error_log: G) -> Result<Vec<String>, String> // TODO better error handling
+    where F: Fn(usize, &[u8]), G: Fn(usize, &[u8]){
+    log!(debug_log, "import_schema: entering");
+    log!(debug_log, "import_schema: apikey.len={:?}", apikey.len());
+    log!(debug_log, "import_schema: endpoint={:?}", endpoint);
+    log!(debug_log, "import_schema: query_engine={:?}", query_engine);
+    log!(debug_log, "import_schema: database={:?}", database);
+    log!(debug_log, "import_schema: server={:?}", server);
+
+    let client = create_client(apikey, &endpoint);
+    let query_type = match QueryType::from_str(query_engine) {
+        Ok(query_type) => query_type,
+        Err(err) => {
+            log!(error_log, "import_schema: Invalid query engine. query_engine={:?}. error={:?}", 
+                    query_engine, err);
+            return Err(String::from("invalid query engine"))
+        }
+    };
+    log!(debug_log, "import_schema: query_type={:?}", query_type);
+
+    let tables = match Retry::new(
+        &mut || client.tables(database),
+        &mut |result| test_if_needs_to_retry(result)
+    ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
+        Ok(Ok(tables)) => tables,
+        Ok(Err(err)) => {
+            log!(error_log, "import_schema: Failed to import schema. {:?}", err);
+            return Err(String::from("td API error"))
+        },
+        Err(err) => {
+            log!(error_log, "import_schema: Failed to import schema. {:?}", err);
+            return Err(String::from("td API error"))
+        }
+    };
+
+    let mut commands = Vec::new();
+    for tab in &tables {
+        // build a query of create foreign table
+        let mut command = format!("CREATE FOREIGN TABLE {} (\n", tab.name);
+        let mut first_item = true;
+
+        // I think td_client should decode schema string but now decoding here.
+        let columns: Vec<Vec<String>> = serde_json::from_str(&tab.schema).unwrap();
+
+        for col in &columns {
+            // convert data type from td to postgres
+            let pg_col_type = match col[1].as_str() {
+                "int" => "int",
+                "long" => "bigint",
+                "float" => "real",
+                "double" => "double precision",
+                "string" => "text",
+                "array" => {
+                    // TODO enable array type
+                    log!(error_log, "The array type is not supported. skip import");
+                    continue;
+                }
+                s => panic!("Unexpected SchemaType: {:?}", s)
+            };
+
+            if first_item {
+                first_item = false;
+            } else {
+                command.push_str(",\n");
+            }
+            // double-quoting column name not to fail import even if column name was key words of PostgreSQL
+            command.push_str(format!("  \"{}\" {}", col[0], pg_col_type).as_str());
+        }
+        command.push_str(format!("\n) SERVER {}\nOPTIONS (", server).as_str());
+        command.push_str(format!("apikey '{}',\n", apikey).as_str());
+        if endpoint.is_some() {
+            command.push_str(format!("endpoint '{}',\n", endpoint.unwrap()).as_str());
+        }
+        command.push_str(format!("database '{}',\n", database).as_str());
+        command.push_str(format!("query_engine '{}',\n", "presto").as_str());
+        command.push_str(format!("table '{}');", tab.name).as_str());
+        log!(debug_log, "import_schema: command={}", command);
+        commands.push(command);
+    }
+    Ok(commands)
 }
