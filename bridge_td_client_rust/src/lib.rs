@@ -759,7 +759,7 @@ pub extern fn import_commit(
         Ok(readable_chunk) => {
             match Retry::new(
                 &mut || client.import_msgpack_gz_file_to_table(
-                             database, table,
+                            database, table,
                             &readable_chunk.file_path.as_str(),
                             Some(uuid.simple().to_string().as_str())),
                 &mut |result| test_if_needs_to_retry(result)

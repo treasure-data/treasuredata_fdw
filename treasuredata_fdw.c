@@ -2308,6 +2308,8 @@ treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			(errmsg("remote_database: %s, server: %s",
 					stmt->remote_schema, stmt->server_name)));
 
+	/* Note that imported tables will NOT include time column
+	   since TD API does not return time column.*/
 	commands = importSchema(apikey, endpoint, query_engine, stmt->remote_schema,
 							stmt->server_name, commands);
 
