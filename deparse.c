@@ -125,8 +125,8 @@ static void printRemotePlaceholder(Oid paramtype, int32 paramtypmod,
                                    deparse_expr_cxt *context);
 static bool isAllowedFunction(FuncExpr *node);
 static char *td_quote_identifier(const char *s, QueryEngineType query_engine_type);
-static void td_deparse_string(StringInfo buf, const char *val, bool isstr, bool workaround_hive_2409);
-static void deparseStringLiteralSupportHive2409(StringInfo buf, const char *val, bool workaround_hive_2409);
+static void td_deparse_string(StringInfo buf, const char *val, bool is_str, QueryEngineType query_engine_type);
+static void deparseStringLiteralForQueryEngineType(StringInfo buf, const char *val, QueryEngineType query_engine_type);
 
 /*
  * Examine each qual clause in input_conds, and classify them into two groups,
@@ -1211,11 +1211,11 @@ deparseRelation(StringInfo buf, Relation rel, QueryEngineType query_engine_type)
 void
 deparseStringLiteral(StringInfo buf, const char *val)
 {
-	deparseStringLiteralSupportHive2409(buf, val, false);
+	deparseStringLiteralForQueryEngineType(buf, val, QUERY_ENGINE_PRESTO);
 }
 
 static void
-deparseStringLiteralSupportHive2409(StringInfo buf, const char *val, bool workaround_hive_2409)
+deparseStringLiteralForQueryEngineType(StringInfo buf, const char *val, QueryEngineType query_engine_type)
 {
 	const char *valptr;
 
@@ -1236,7 +1236,7 @@ deparseStringLiteralSupportHive2409(StringInfo buf, const char *val, bool workar
 			appendStringInfoChar(buf, ch);
 
 		/* Workaround for https://issues.apache.org/jira/browse/HIVE-2409 */
-		if (workaround_hive_2409 && ch == ';')
+		if (query_engine_type == QUERY_ENGINE_HIVE && ch == ';')
 			appendStringInfoChar(buf, '\\');
 
 		appendStringInfoChar(buf, ch);
@@ -1428,7 +1428,7 @@ deparseConst(Const *node, deparse_expr_cxt *context)
 				appendStringInfoString(buf, "false");
 			break;
 		default:
-			deparseStringLiteralSupportHive2409(buf, extval, context->query_engine_type == QUERY_ENGINE_HIVE);
+			deparseStringLiteralForQueryEngineType(buf, extval, context->query_engine_type);
 			break;
 	}
 #if 0
@@ -1790,7 +1790,6 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 					Oid  typoutput;
 					bool typIsVarlena;
 					char *extval;
-					bool workaround_hive_2409 = context->query_engine_type == QUERY_ENGINE_HIVE;
 
 					getTypeOutputInfo(c->consttype,
 					                  &typoutput, &typIsVarlena);
@@ -1800,10 +1799,10 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, deparse_expr_cxt *context)
 					{
 						case INT4ARRAYOID:
 						case OIDARRAYOID:
-							td_deparse_string(buf, extval, false, workaround_hive_2409);
+							td_deparse_string(buf, extval, false, context->query_engine_type);
 							break;
 						default:
-							td_deparse_string(buf, extval, true, workaround_hive_2409);
+							td_deparse_string(buf, extval, true, context->query_engine_type);
 							break;
 					}
 				}
@@ -2145,49 +2144,91 @@ td_quote_identifier(const char *s, QueryEngineType query_engine_type)
 }
 
 static void
-td_deparse_string(StringInfo buf, const char *val, bool isstr, bool workaround_hive_2409)
+td_deparse_string(StringInfo buf, const char *val, bool is_str, QueryEngineType query_engine_type)
 {
 	const char *valptr;
 	int i = -1;
-	bool quoted = false;
+	bool in_quotes = false;
+	bool in_escape_seq = false;
+
+	if (is_str)
+		appendStringInfoChar(buf, '\'');
 
 	for (valptr = val; *valptr; valptr++)
 	{
 		char ch = *valptr;
 		i++;
 
-		if (i == 0 && isstr)
-			appendStringInfoChar(buf, '\'');
-
-		/*
-		 * Remove '{', '}' and \" character from the string. Because
-		 * this syntax is not recognize by the remote server.
-		 */
-		if ((ch == '{' && i == 0) || (ch == '}' && (i == (strlen(val) - 1))))
-			continue;
-
-		if (ch == '\"')
+		if (in_escape_seq)
 		{
-			quoted = !quoted;
-			continue;
-		}
-
-		if (!quoted && ch == ',' && isstr)
-		{
-			appendStringInfoChar(buf, '\'');
+			/* If the previous character is an escape character, just output this character as is */
+			in_escape_seq = false;
 			appendStringInfoChar(buf, ch);
-			appendStringInfoChar(buf, ' ');
-			appendStringInfoChar(buf, '\'');
 			continue;
 		}
 
-		/* Workaround for https://issues.apache.org/jira/browse/HIVE-2409 */
-		if (workaround_hive_2409 && ch == ';')
-			appendStringInfoChar(buf, '\\');
+		switch (ch)
+		{
+			case '{':
+				/* Remove head '{' because this syntax is not recognize by the remote server */
+				if (i != 0)
+					appendStringInfoChar(buf, ch);
+				break;
 
-		appendStringInfoChar(buf, ch);
+			case '}':
+				/* Remove tail '}' because this syntax is not recognize by the remote server */
+				if (i != (strlen(val) - 1))
+					appendStringInfoChar(buf, ch);
+				break;
+
+			case '\"':
+				/* Consider if current character is in a string */
+				in_quotes = !in_quotes;
+				break;
+
+			case ',':
+				/* Handle it as a delimiter when not in a quoted string */
+				if (is_str && !in_quotes)
+				{
+					appendStringInfoChar(buf, '\'');
+					appendStringInfoChar(buf, ch);
+					appendStringInfoChar(buf, ' ');
+					appendStringInfoChar(buf, '\'');
+					continue;
+				}
+				else
+					appendStringInfoChar(buf, ch);
+
+				break;
+
+			case ';':
+				/* Workaround for https://issues.apache.org/jira/browse/HIVE-2409 */
+				if (query_engine_type == QUERY_ENGINE_HIVE)
+					appendStringInfoChar(buf, '\\');
+
+				appendStringInfoChar(buf, ch);
+				break;
+
+			case '\\':
+				in_escape_seq = true;
+				break;
+
+			case '\'':
+				if (query_engine_type == QUERY_ENGINE_HIVE)
+					appendStringInfoChar(buf, '\\');
+				else
+					appendStringInfoChar(buf, '\'');
+
+				appendStringInfoChar(buf, ch);
+				break;
+
+			default:
+				appendStringInfoChar(buf, ch);
+				break;
+		}
 	}
-	if (isstr)
+
+	if (is_str)
 		appendStringInfoChar(buf, '\'');
 }
 

@@ -22,6 +22,7 @@ SELECT COUNT(1) FROM td_www_access WHERE method LIKE '%ET' AND code = 200;
 SELECT COUNT(1) FROM td_www_access WHERE method NOT LIKE '%ET' AND code NOT IN (404, 409);
 SELECT COUNT(1) FROM td_www_access WHERE code = ANY('{200,400}') AND method = SOME('{"","DELETE,GET","POST"}');
 SELECT COUNT(1) FROM td_www_access WHERE code > ANY('{200, 300}');
+SELECT COUNT(1) FROM td_www_access WHERE code = 200 AND method IN ('"', 'GET', 'POST');
 SELECT COUNT(1) FROM td_www_access WHERE time in (SELECT MIN(time) FROM td_www_access);
 SELECT COUNT(1) FROM td_www_access WHERE SUBSTRING(method, 1, 2) || SUBSTR(method, 3, 2) = 'POST';
 SELECT COUNT(1) FROM td_www_access WHERE agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.6; rv:9.0.1) Gecko/20100101 Firefox/9.0.1' OR agent LIKE 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:10.0.1)%' OR agent IN ('Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)', 'Mozilla/5.0 (iPad; CPU OS 5_0_1 like Mac OS X) AppleWebKit/534.46 (KHTML, like Gecko) Version/5.1 Mobile/9A405 Safari/7534.48.3');
@@ -32,6 +33,16 @@ DECLARE cur CURSOR FOR SELECT time FROM td_www_access WHERE time < 1412320911 OR
 FETCH cur;
 FETCH cur;
 COMMIT;
+CREATE FOREIGN TABLE td_quote_test (
+    val varchar
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'treasuredata_fdw',
+    query_engine '<%= @query_engine %>',
+    table 'quote_test'
+);
+SELECT COUNT(1) FROM td_quote_test WHERE val IN ('xxx', '''abc''');
 CREATE FOREIGN TABLE td_summary_in_www_access (
     code integer,
     method varchar,
@@ -100,6 +111,7 @@ SELECT code, size, method FROM local_schema.www_access ORDER BY size, code LIMIT
 DROP FOREIGN TABLE td_www_access_dst;
 DROP FOREIGN TABLE td_summary_in_www_access;
 DROP FOREIGN TABLE td_www_access;
+DROP FOREIGN TABLE td_quote_test;
 DROP FOREIGN TABLE td_array_test;
 SET client_min_messages = 'error'; -- pg9.6 print NOTICE log in the next command but pg9.5 does not
 DROP SCHEMA local_schema CASCADE;
