@@ -180,9 +180,52 @@ SELECT COUNT(1) FROM td_array_test WHERE 'two' = any(str_array);
      1
 (1 row)
 
+CREATE SCHEMA local_schema;
+IMPORT FOREIGN SCHEMA sample_datasets
+FROM SERVER treasuredata_server
+INTO local_schema OPTIONS (
+    apikey '<%= @apikey %>',
+    query_engine '<%= @query_engine %>'
+);
+SELECT table_schema, table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'local_schema'
+ORDER BY table_name, ordinal_position;
+ table_schema | table_name | column_name |    data_type     
+--------------+------------+-------------+------------------
+ local_schema | nasdaq     | symbol      | text
+ local_schema | nasdaq     | open        | double precision
+ local_schema | nasdaq     | volume      | bigint
+ local_schema | nasdaq     | high        | double precision
+ local_schema | nasdaq     | low         | double precision
+ local_schema | nasdaq     | close       | double precision
+ local_schema | www_access | user        | integer
+ local_schema | www_access | host        | text
+ local_schema | www_access | path        | text
+ local_schema | www_access | referer     | text
+ local_schema | www_access | code        | bigint
+ local_schema | www_access | agent       | text
+ local_schema | www_access | size        | bigint
+ local_schema | www_access | method      | text
+(14 rows)
+
+SELECT code, size, method FROM local_schema.www_access ORDER BY size, code LIMIT 5;
+ code | size | method 
+------+------+--------
+  200 |   40 | GET
+  200 |   40 | GET
+  200 |   40 | GET
+  200 |   40 | GET
+  200 |   40 | GET
+(5 rows)
+
 DROP FOREIGN TABLE td_www_access_dst;
 DROP FOREIGN TABLE td_summary_in_www_access;
 DROP FOREIGN TABLE td_www_access;
 DROP FOREIGN TABLE td_array_test;
+DROP SCHEMA local_schema CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to foreign table local_schema.nasdaq
+drop cascades to foreign table local_schema.www_access
 DROP SERVER treasuredata_server;
 DROP EXTENSION treasuredata_fdw CASCADE;
