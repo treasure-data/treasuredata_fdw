@@ -180,6 +180,9 @@ SELECT COUNT(1) FROM td_array_test WHERE 'two' = any(str_array);
      1
 (1 row)
 
+-- ===================================================================
+-- import foreign schema
+-- ===================================================================
 CREATE SCHEMA local_schema;
 IMPORT FOREIGN SCHEMA sample_datasets
 FROM SERVER treasuredata_server
@@ -223,9 +226,7 @@ DROP FOREIGN TABLE td_www_access_dst;
 DROP FOREIGN TABLE td_summary_in_www_access;
 DROP FOREIGN TABLE td_www_access;
 DROP FOREIGN TABLE td_array_test;
+SET client_min_messages = 'error'; -- pg9.6 print NOTICE log in the next command but pg9.5 does not
 DROP SCHEMA local_schema CASCADE;
-NOTICE:  drop cascades to 2 other objects
-DETAIL:  drop cascades to foreign table local_schema.nasdaq
-drop cascades to foreign table local_schema.www_access
 DROP SERVER treasuredata_server;
 DROP EXTENSION treasuredata_fdw CASCADE;
