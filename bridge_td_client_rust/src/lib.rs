@@ -791,8 +791,9 @@ pub extern fn import_schema(
     raw_server: *const c_char,
     mut commands: *mut c_void,
     plappend: extern fn(*mut c_void, usize, &[u8]) -> *mut c_void,
-    cfunc_debug_log: extern fn(usize, &[u8]),
-    cfunc_error_log: extern fn(usize, &[u8])) -> *mut c_void {
+    debug_log: extern fn(usize, &[u8]),
+    warning_log: extern fn(usize, &[u8]),
+    error_log: extern fn(usize, &[u8])) -> *mut c_void {
 
     let apikey = convert_str_from_raw_str(raw_apikey);
     let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
@@ -800,11 +801,8 @@ pub extern fn import_schema(
     let database = convert_str_from_raw_str(raw_database);
     let server = convert_str_from_raw_str(raw_server);
 
-    let debug_log = |len: usize, msg: &[u8]| cfunc_debug_log(len, msg);
-    let error_log = |len: usize, msg: &[u8]| cfunc_error_log(len, msg);
-
     match import_schema_internal(apikey, endpoint, query_engine, database,
-                                 server, &debug_log, &error_log) {
+                                 server, debug_log, warning_log, error_log) {
         Ok(queries) => {
             for query in &queries {
                 let query_byte = query.as_bytes();
@@ -816,15 +814,16 @@ pub extern fn import_schema(
     }
 }
 
-fn import_schema_internal<F, G>(
+fn import_schema_internal(
     apikey: &str,
     endpoint: Option<&str>,
     query_engine: &str,
     database: &str,
     server: &str,
-    debug_log: F,
-    error_log: G) -> Result<Vec<String>, String> // TODO better error handling
-    where F: Fn(usize, &[u8]), G: Fn(usize, &[u8]){
+    debug_log: extern fn(usize, &[u8]),
+    warning_log: extern fn(usize, &[u8]),
+    error_log: extern fn(usize, &[u8])) -> Result<Vec<String>, String> {
+    // TODO better error handling
     log!(debug_log, "import_schema: entering");
     log!(debug_log, "import_schema: apikey.len={:?}", apikey.len());
     log!(debug_log, "import_schema: endpoint={:?}", endpoint);
@@ -859,7 +858,7 @@ fn import_schema_internal<F, G>(
     };
 
     let mut commands = Vec::new();
-    for tab in &tables {
+    'outer: for tab in &tables {
         // build a query of create foreign table
         let mut command = format!("CREATE FOREIGN TABLE {} (\n", tab.name);
         let mut first_item = true;
@@ -875,12 +874,16 @@ fn import_schema_internal<F, G>(
                 "float" => "real",
                 "double" => "double precision",
                 "string" => "text",
-                "array" => {
-                    // TODO enable array type
-                    log!(error_log, "The array type is not supported. skip import");
-                    continue;
+                s if s.starts_with("array") => {
+                    log!(warning_log,
+                         "It is not supported to import tables which include array type column. Skip table '{}'",
+                         tab.name);
+                    continue 'outer;
                 }
-                s => panic!("Unexpected SchemaType: {:?}", s)
+                s => {
+                    log!(error_log, "Unexpected SchemaType: {:?}", s);
+                    break 'outer;
+                }
             };
 
             if first_item {
@@ -888,7 +891,8 @@ fn import_schema_internal<F, G>(
             } else {
                 command.push_str(",\n");
             }
-            // double-quoting column name not to fail import even if column name was key words of PostgreSQL
+            // double-quoting column name not to fail import
+            // even if column name was key words of PostgreSQL
             command.push_str(format!("  \"{}\" {}", col[0], pg_col_type).as_str());
         }
         command.push_str(format!("\n) SERVER {}\nOPTIONS (", server).as_str());

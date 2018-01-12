@@ -108,6 +108,18 @@ FROM information_schema.columns
 WHERE table_schema = 'local_schema'
 ORDER BY table_name, ordinal_position;
 SELECT code, size, method FROM local_schema.www_access ORDER BY size, code LIMIT 5;
+SET client_min_messages = 'warning';
+IMPORT FOREIGN SCHEMA treasuredata_fdw LIMIT TO (array_test)
+FROM SERVER treasuredata_server
+INTO local_schema OPTIONS (
+    apikey '<%= @apikey %>',
+    query_engine '<%= @query_engine %>'
+);
+RESET client_min_messages;
+\det local_schema.array_test
+-- ===================================================================
+-- clean up
+-- ===================================================================
 DROP FOREIGN TABLE td_www_access_dst;
 DROP FOREIGN TABLE td_summary_in_www_access;
 DROP FOREIGN TABLE td_www_access;

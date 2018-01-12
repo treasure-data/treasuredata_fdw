@@ -243,6 +243,24 @@ SELECT code, size, method FROM local_schema.www_access ORDER BY size, code LIMIT
   200 |   40 | GET
 (5 rows)
 
+SET client_min_messages = 'warning';
+IMPORT FOREIGN SCHEMA treasuredata_fdw LIMIT TO (array_test)
+FROM SERVER treasuredata_server
+INTO local_schema OPTIONS (
+    apikey '<%= @apikey %>',
+    query_engine '<%= @query_engine %>'
+);
+WARNING:  It is not supported to import tables which include array type column. Skip table 'array_test'
+RESET client_min_messages;
+\det local_schema.array_test
+ List of foreign tables
+ Schema | Table | Server 
+--------+-------+--------
+(0 rows)
+
+-- ===================================================================
+-- clean up
+-- ===================================================================
 DROP FOREIGN TABLE td_www_access_dst;
 DROP FOREIGN TABLE td_summary_in_www_access;
 DROP FOREIGN TABLE td_www_access;
