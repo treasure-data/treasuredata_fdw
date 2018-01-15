@@ -108,15 +108,18 @@ FROM information_schema.columns
 WHERE table_schema = 'local_schema'
 ORDER BY table_name, ordinal_position;
 SELECT code, size, method FROM local_schema.www_access ORDER BY size, code LIMIT 5;
-SET client_min_messages = 'warning';
 IMPORT FOREIGN SCHEMA treasuredata_fdw LIMIT TO (array_test)
 FROM SERVER treasuredata_server
 INTO local_schema OPTIONS (
     apikey '<%= @apikey %>',
     query_engine '<%= @query_engine %>'
 );
-RESET client_min_messages;
-\det local_schema.array_test
+SELECT table_schema, table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'local_schema' AND table_name = 'array_test'
+ORDER BY table_name, ordinal_position;
+SELECT * FROM local_schema.array_test;
+SELECT COUNT(1) FROM local_schema.array_test WHERE 'two' = any(str_array);
 -- ===================================================================
 -- clean up
 -- ===================================================================

@@ -867,25 +867,6 @@ fn import_schema_internal(
         let columns: Vec<Vec<String>> = serde_json::from_str(&tab.schema).unwrap();
 
         for col in &columns {
-            // convert data type from td to postgres
-            let pg_col_type = match col[1].as_str() {
-                "int" => "int",
-                "long" => "bigint",
-                "float" => "real",
-                "double" => "double precision",
-                "string" => "text",
-                s if s.starts_with("array") => {
-                    log!(warning_log,
-                         "It is not supported to import tables which include array type column. Skip table '{}'",
-                         tab.name);
-                    continue 'outer;
-                }
-                s => {
-                    log!(error_log, "Unexpected SchemaType: {:?}", s);
-                    break 'outer;
-                }
-            };
-
             if first_item {
                 first_item = false;
             } else {
@@ -893,7 +874,39 @@ fn import_schema_internal(
             }
             // double-quoting column name not to fail import
             // even if column name was key words of PostgreSQL
-            command.push_str(format!("  \"{}\" {}", col[0], pg_col_type).as_str());
+            command.push_str(format!("  \"{}\" ", col[0]).as_str());
+
+            // convert data type from td to postgres
+            match col[1].as_str() {
+                "int" => command.push_str("int"),
+                "long" => command.push_str("bigint"),
+                "float" => command.push_str("real"),
+                "double" => command.push_str("double precision"),
+                "string" => command.push_str("text"),
+                s if s.starts_with("array") => {
+                    let type_elems: Vec<&str> = s.split("<").collect();
+                    let dimension = type_elems.len() - 1;
+                    let td_arr_type = type_elems[type_elems.len() - 1]
+                        .trim_right_matches(">");
+                    let pg_arr_type = match td_arr_type {
+                        "int" => "int",
+                        "long" => "bigint",
+                        "float" => "real",
+                        "double" => "double precision",
+                        "string" => "text",
+                        s => {
+                            log!(error_log, "Unexpected ArrayType: {:?}", s);
+                            break 'outer;
+                        }
+                    };
+                    command.push_str(format!("{}{}", pg_arr_type,
+                                             "[]".repeat(dimension)).as_str())
+                }
+                s => {
+                    log!(error_log, "Unexpected SchemaType: {:?}", s);
+                    break 'outer;
+                }
+            };
         }
         command.push_str(format!("\n) SERVER {}\nOPTIONS (", server).as_str());
         command.push_str(format!("apikey '{}',\n", apikey).as_str());
