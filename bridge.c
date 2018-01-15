@@ -20,7 +20,6 @@
 
 #include <postgres.h>
 #define LOG_LEVEL_DEBUG DEBUG1
-#define LOG_LEVEL_WARNING WARNING
 #define LOG_LEVEL_ERROR ERROR
 #define ALLOC(sz) (palloc(sz))
 #define FREE(p) (pfree(p))
@@ -46,7 +45,6 @@ static int add_nil(fetch_result_context *context);
 static int add_bytes(fetch_result_context *context, size_t len, const char *s);
 static List *plappend(List *list, size_t len, const char *s);
 static void debug_log(size_t len, const char *msg);
-static void warning_log(size_t len, const char *msg);
 static void error_log(size_t len, const char *msg);
 
 extern void *issue_query(
@@ -147,7 +145,6 @@ extern List *import_schema(
 	List *commands,
     List *(*plappend)(List *, size_t, const char *),
     void (*debug_log)(size_t, const char *),
-	void (*warning_log)(size_t, const char *),
     void (*error_log)(size_t, const char *)
 );
 #endif
@@ -327,7 +324,6 @@ List *importSchema(
 		commands,
 		plappend,
 		debug_log,
-		warning_log,
 		error_log);
 }
 
@@ -377,12 +373,6 @@ static void
 debug_log(size_t len, const char *msg)
 {
 	call_elog(LOG_LEVEL_DEBUG, len, msg);
-}
-
-static void
-warning_log(size_t len, const char *msg)
-{
-	call_elog(LOG_LEVEL_WARNING, len, msg);
 }
 
 static void

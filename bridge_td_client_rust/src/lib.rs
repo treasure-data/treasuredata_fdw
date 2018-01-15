@@ -792,7 +792,6 @@ pub extern fn import_schema(
     mut commands: *mut c_void,
     plappend: extern fn(*mut c_void, usize, &[u8]) -> *mut c_void,
     debug_log: extern fn(usize, &[u8]),
-    warning_log: extern fn(usize, &[u8]),
     error_log: extern fn(usize, &[u8])) -> *mut c_void {
 
     let apikey = convert_str_from_raw_str(raw_apikey);
@@ -802,7 +801,7 @@ pub extern fn import_schema(
     let server = convert_str_from_raw_str(raw_server);
 
     match import_schema_internal(apikey, endpoint, query_engine, database,
-                                 server, debug_log, warning_log, error_log) {
+                                 server, debug_log, error_log) {
         Ok(queries) => {
             for query in &queries {
                 let query_byte = query.as_bytes();
@@ -821,7 +820,6 @@ fn import_schema_internal(
     database: &str,
     server: &str,
     debug_log: extern fn(usize, &[u8]),
-    warning_log: extern fn(usize, &[u8]),
     error_log: extern fn(usize, &[u8])) -> Result<Vec<String>, String> {
     // TODO better error handling
     log!(debug_log, "import_schema: entering");
