@@ -147,9 +147,9 @@ INTO local_schema OPTIONS (
 \det+ local_schema.
                                                                                      List of foreign tables
     Schema    |   Table    |       Server        |                                                          FDW Options                                                           | Description
---------------+------------+---------------------+--------------------------------------------------------------------------------------------------------------------------------+-------------
- local_schema | nasdaq     | treasuredata_server | (apikey '1/52d34b5d7d8087fd20b38a9c8d4de5e5ea0a8ece', database 'sample_datasets', query_engine 'presto', "table" 'nasdaq')     |
- local_schema | www_access | treasuredata_server | (apikey '1/52d34b5d7d8087fd20b38a9c8d4de5e5ea0a8ece', database 'sample_datasets', query_engine 'presto', "table" 'www_access') |
+--------------|------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------|-------------
+ local_schema | nasdaq     | treasuredata_server | (apikey 'your_api_key', database 'sample_datasets', query_engine 'presto', "table" 'nasdaq')     |
+ local_schema | www_access | treasuredata_server | (apikey 'your_api_key', database 'sample_datasets', query_engine 'presto', "table" 'www_access') |
 (2 rows)
 ```
 Note that "time" column will NOT be imported by IMPORT FOREIGN SCHEMA.
