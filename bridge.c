@@ -43,7 +43,8 @@ typedef struct
 
 static int add_nil(fetch_result_context *context);
 static int add_bytes(fetch_result_context *context, size_t len, const char *s);
-static List *plappend(List *list, size_t len, const char *s);
+static void *pgstrdup(size_t len, const char* s);
+static void *pgalloc(size_t len);
 static void debug_log(size_t len, const char *msg);
 static void error_log(size_t len, const char *msg);
 
@@ -135,19 +136,18 @@ extern void import_commit(
     void (*error_log)(size_t, const char *)
 );
 
-#ifndef WITHOUT_PG
-extern List *import_schema(
-	const char *apikey,
+extern int get_tables(
+    const char *apikey,
     const char *endpoint,
-	const char *query_engine,
-	const char *database,
-	const char *server,
-	List *commands,
-    List *(*plappend)(List *, size_t, const char *),
+    const char *database,
+    table_schema_t **tables,
+    void *(*pgstrdup)(size_t, const char*),
+    void *(*pgalloc)(size_t),
     void (*debug_log)(size_t, const char *),
     void (*error_log)(size_t, const char *)
 );
-#endif
+
+extern void release_table_resource(table_schema_t *tables);
 
 void *issueQuery(
     const char *apikey,
@@ -306,37 +306,35 @@ void importCommit(void *import_state)
 	    error_log);
 }
 
-#ifndef WITHOUT_PG
-List *importSchema(
-	const char *apikey,
-    const char *endpoint,
-	const char *query_engine,
-	const char *database,
-	const char *server,
-	List *commands)
+static void *pgalloc(size_t len)
 {
-	return import_schema(
-		apikey,
-		endpoint,
-		query_engine,
-		database,
-		server,
-		commands,
-		plappend,
-		debug_log,
-		error_log);
+	return ALLOC(len);
 }
 
-static List *plappend(List *list, size_t len, const char *s)
+static void *pgstrdup(size_t len, const char *s)
 {
 	char *buf = (char*)ALLOC(len + 1);
 	memcpy(buf, s, len);
 	buf[len] = '\0';
-	ereport(DEBUG3,
-			(errmsg("plappend: string length = %zu", len)));
-	return lappend(list, buf);
+	return buf;
 }
-#endif
+
+int getTables(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    table_schema_t **tables)
+{
+	return get_tables(
+	           apikey,
+	           endpoint,
+	           database,
+	           tables,
+	           pgstrdup,
+	           pgalloc,
+	           debug_log,
+	           error_log);
+}
 
 static int add_nil(fetch_result_context *context)
 {

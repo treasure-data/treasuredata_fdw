@@ -18,6 +18,14 @@
 #include "nodes/pg_list.h"
 #endif
 
+typedef struct
+{
+	char *name;
+	size_t numcols;
+	char **colnames;
+	char **coltypes;
+} table_schema_t;
+
 extern void* issueQuery(
     const char *apikey,
     const char *endpoint,
@@ -75,15 +83,11 @@ extern size_t importAppend(void *import_state, const char **values);
 
 extern void importCommit(void *import_state);
 
-#ifndef WITHOUT_PG
-List *importSchema(
-	const char *apikey,
+extern int getTables(
+    const char *apikey,
     const char *endpoint,
-	const char *query_engine,
-	const char *database,
-	const char *server,
-	List *commands);
-#endif
+    const char *database,
+    table_schema_t **tables);
 
 #endif   /* TREASUREDATA_FDW_BRIDGE_H */
 

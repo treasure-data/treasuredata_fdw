@@ -2272,7 +2272,11 @@ treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	char		*endpoint = NULL;
 	char		*query_engine = NULL;
 	char		*apikey = NULL;
+	StringInfoData buf;
 	ListCell	*lc = NULL;
+	table_schema_t **tables = NULL;
+	int			numtables;
+	int			i, j;
 
 	/* Parse statement options */
 	foreach(lc, stmt->options)
@@ -2294,28 +2298,80 @@ treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	/* Validate options */
 	if (apikey == NULL)
 		ereport(ERROR,
-				(errcode(ERRCODE_FDW_DYNAMIC_PARAMETER_VALUE_NEEDED),
-				 errmsg("apikey is required for treasuredata_fdw foreign tables")));
+		        (errcode(ERRCODE_FDW_DYNAMIC_PARAMETER_VALUE_NEEDED),
+		         errmsg("apikey is required for treasuredata_fdw foreign tables")));
 	if (query_engine == NULL)
 		ereport(ERROR,
-				(errcode(ERRCODE_FDW_DYNAMIC_PARAMETER_VALUE_NEEDED),
-				 errmsg("query_engine is required for treasuredata_fdw foreign tables")));
+		        (errcode(ERRCODE_FDW_DYNAMIC_PARAMETER_VALUE_NEEDED),
+		         errmsg("query_engine is required for treasuredata_fdw foreign tables")));
 
 	ereport(DEBUG1,
-			(errmsg("apikey: %s, endpoint: %s, query_engine: %s",
-					apikey, endpoint, query_engine)));
+	        (errmsg("apikey: %s, endpoint: %s, query_engine: %s",
+	                apikey, endpoint, query_engine)));
 	ereport(DEBUG1,
-			(errmsg("remote_database: %s, server: %s",
-					stmt->remote_schema, stmt->server_name)));
+	        (errmsg("remote_database: %s, server: %s",
+	                stmt->remote_schema, stmt->server_name)));
+
+	/* Create workspace for strings */
+	initStringInfo(&buf);
 
 	/* Note that imported tables will NOT include time column
 	   since TD API does not return time column.*/
-	commands = importSchema(apikey, endpoint, query_engine, stmt->remote_schema,
-							stmt->server_name, commands);
+	numtables = getTables(apikey, endpoint,stmt->remote_schema, tables);
+
+	for (i = 0; i < numtables; i++)
+	{
+		table_schema_t *table = tables[i];
+		bool		first_item = true;
+
+		resetStringInfo(&buf);
+		appendStringInfo(&buf, "CREATE FOREIGN TABLE %s (\n",
+		                 quote_identifier(table->name));
+
+		for (j = 0; j < table->numcols; j++)
+		{
+			char	   *colname = table->colnames[j];
+			char	   *coltype = table->coltypes[j];
+
+			if (first_item)
+				first_item = false;
+			else
+				appendStringInfoString(&buf, ",\n");
+
+			/* Print column name and type */
+			appendStringInfo(&buf, "  %s %s",
+			                 quote_identifier(colname),
+			                 coltype);
+		}
+
+		/*
+		 * Add server name and table-level options.
+		 */
+		appendStringInfo(&buf, "\n) SERVER %s\nOPTIONS (",
+		                 quote_identifier(stmt->server_name));
+
+		appendStringInfoString(&buf, "apikey ");
+		deparseStringLiteral(&buf, apikey);
+		if (endpoint != NULL)
+		{
+			appendStringInfoString(&buf, ", endpoint ");
+			deparseStringLiteral(&buf, endpoint);
+		}
+		appendStringInfoString(&buf, ", database ");
+		deparseStringLiteral(&buf, stmt->remote_schema);
+		appendStringInfoString(&buf, ", query_engine ");
+		deparseStringLiteral(&buf, query_engine);
+		appendStringInfoString(&buf, ", table ");
+		deparseStringLiteral(&buf, table->name);
+
+		appendStringInfoString(&buf, ");");
+
+		commands = lappend(commands, pstrdup(buf.data));
+	}
 
 	ereport(DEBUG1,
-			(errmsg("number of import commands: %d",
-					list_length(commands))));
+	        (errmsg("number of import commands: %d",
+	                list_length(commands))));
 
 	return commands;
 }

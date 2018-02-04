@@ -6,7 +6,9 @@ extern crate uuid;
 extern crate serde;
 extern crate serde_json;
 extern crate td_client;
-use libc::{c_char, c_void};
+use libc::{c_char, c_void, size_t};
+use std::mem;
+use std::slice;
 use std::ffi::CStr;
 use std::fs::{self, File};
 use std::path::Path;
@@ -40,6 +42,14 @@ pub struct TdImportState {
     column_names: Vec<String>,
     current_time: String,
     writable_chunk: TableImportWritableChunk
+}
+
+#[repr(C)]
+pub struct PgTableSchema {
+    name: *const c_void,
+    numcols: size_t,
+    colnames: *const *const c_void,
+    coltypes: *const *const c_void
 }
 
 #[derive(Debug)]
@@ -783,139 +793,102 @@ pub extern fn import_commit(
 }
 
 #[no_mangle]
-pub extern fn import_schema(
+pub extern fn get_tables(
     raw_apikey: *const c_char,
     raw_endpoint: *const c_char,
-    raw_query_engine: *const c_char,
     raw_database: *const c_char,
-    raw_server: *const c_char,
-    mut commands: *mut c_void,
-    plappend: extern fn(*mut c_void, usize, &[u8]) -> *mut c_void,
+    mut tables_ptr: *const *const PgTableSchema,
+    pgstrdup: extern fn(usize, &[u8]) -> *mut c_void,
+    pgalloc: extern fn(usize) -> *mut c_void,
     debug_log: extern fn(usize, &[u8]),
-    error_log: extern fn(usize, &[u8])) -> *mut c_void {
+    error_log: extern fn(usize, &[u8]) -> !) -> usize {
 
     let apikey = convert_str_from_raw_str(raw_apikey);
     let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
-    let query_engine = convert_str_from_raw_str(raw_query_engine);
     let database = convert_str_from_raw_str(raw_database);
-    let server = convert_str_from_raw_str(raw_server);
 
-    match import_schema_internal(apikey, endpoint, query_engine, database,
-                                 server, debug_log, error_log) {
-        Ok(queries) => {
-            for query in &queries {
-                let query_byte = query.as_bytes();
-                commands = plappend(commands, query_byte.len(), query_byte);
-            }
-            commands
-        },
-        Err(_) => null_mut()
-    }
-}
-
-fn import_schema_internal(
-    apikey: &str,
-    endpoint: Option<&str>,
-    query_engine: &str,
-    database: &str,
-    server: &str,
-    debug_log: extern fn(usize, &[u8]),
-    error_log: extern fn(usize, &[u8])) -> Result<Vec<String>, String> {
-    // TODO better error handling
     log!(debug_log, "import_schema: entering");
     log!(debug_log, "import_schema: apikey.len={:?}", apikey.len());
     log!(debug_log, "import_schema: endpoint={:?}", endpoint);
-    log!(debug_log, "import_schema: query_engine={:?}", query_engine);
     log!(debug_log, "import_schema: database={:?}", database);
-    log!(debug_log, "import_schema: server={:?}", server);
 
     let client = create_client(apikey, &endpoint);
-    let query_type = match QueryType::from_str(query_engine) {
-        Ok(query_type) => query_type,
-        Err(err) => {
-            log!(error_log, "import_schema: Invalid query engine. query_engine={:?}. error={:?}", 
-                    query_engine, err);
-            return Err(String::from("invalid query engine"))
-        }
-    };
-    log!(debug_log, "import_schema: query_type={:?}", query_type);
-
-    let tables = match Retry::new(
+    let td_tables = match Retry::new(
         &mut || client.tables(database),
         &mut |result| test_if_needs_to_retry(result)
     ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
         Ok(Ok(tables)) => tables,
         Ok(Err(err)) => {
-            log!(error_log, "import_schema: Failed to import schema. {:?}", err);
-            return Err(String::from("td API error"))
+            log!(error_log, "import_schema: Failed to get tables. {:?}", err);
         },
         Err(err) => {
-            log!(error_log, "import_schema: Failed to import schema. {:?}", err);
-            return Err(String::from("td API error"))
+            log!(error_log, "import_schema: Failed to get tables. {:?}", err);
         }
     };
 
-    let mut commands = Vec::new();
-    'outer: for tab in &tables {
-        // build a query of create foreign table
-        let mut command = format!("CREATE FOREIGN TABLE {} (\n", tab.name);
-        let mut first_item = true;
+    fn convert_simple_type_td_to_pg(td_type_name: &str) -> Result<String, String> {
+        match td_type_name {
+            "int" => Ok(String::from("int")),
+            "long" => Ok(String::from("bigint")),
+            "float" => Ok(String::from("real")),
+            "double" => Ok(String::from("double precision")),
+            "string" => Ok(String::from("text")),
+            s => Err(String::from(format!("Unexpected TypeName: {:?}", s)))
+        }
+    };
+
+    fn convert_array_type_td_to_pg(td_type_name: &str) -> Result<String, String> {
+        let type_elems: Vec<&str> = td_type_name.split("<").collect();
+        let dimension = type_elems.len() - 1;
+        let td_arr_type = type_elems[type_elems.len() - 1]
+            .trim_right_matches(">");
+        match convert_simple_type_td_to_pg(td_arr_type) {
+            Ok(pg_arr_type) => Ok(format!("{}{}", pg_arr_type, "[]".repeat(dimension))),
+            Err(msg) => Err(msg)
+        }
+    };
+
+    let numtables = td_tables.len();
+    tables_ptr = pgalloc(mem::size_of::<*const PgTableSchema>() * numtables) as *const *const PgTableSchema;
+    let tables = unsafe {
+        slice::from_raw_parts_mut(tables_ptr as *mut *mut PgTableSchema, numtables)
+    };
+    for (i, tab) in td_tables.iter().enumerate() {
+        let pg_table_name_byte = tab.name.as_bytes();
+        let table = unsafe { &mut *tables[i] };
+        table.name = pgstrdup(pg_table_name_byte.len(), pg_table_name_byte);
 
         // I think td_client should decode schema string but now decoding here.
-        let columns: Vec<Vec<String>> = serde_json::from_str(&tab.schema).unwrap();
+        let td_columns: Vec<Vec<String>> = serde_json::from_str(&tab.schema).unwrap();
+        let numcolumns = td_columns.len();
+        table.numcols = numcolumns as size_t;
 
-        for col in &columns {
-            if first_item {
-                first_item = false;
-            } else {
-                command.push_str(",\n");
+        table.colnames = pgalloc(mem::size_of::<*const c_void>() * numcolumns) as *const *const c_void;
+        let colnames: &mut [*mut c_void] = unsafe {
+            slice::from_raw_parts_mut(table.colnames as *mut *mut c_void, numcolumns)
+        };
+        table.coltypes = pgalloc(mem::size_of::<*const c_void>() * numcolumns) as *const *const c_void;
+        let coltypes: &mut [*mut c_void] = unsafe {
+            slice::from_raw_parts_mut(table.coltypes as *mut *mut c_void, numcolumns)
+        };
+
+        // convert data type from td to postgres
+        for (j, col) in td_columns.into_iter().enumerate() {
+            let pg_col_name_byte = col[0].as_bytes();
+            let td_type_name = col[1].as_str();
+            let pg_type_name = match if td_type_name.starts_with("array") {
+                convert_array_type_td_to_pg(td_type_name)
             }
-            // double-quoting column name not to fail import
-            // even if column name was key words of PostgreSQL
-            command.push_str(format!("  \"{}\" ", col[0]).as_str());
-
-            // convert data type from td to postgres
-            match col[1].as_str() {
-                "int" => command.push_str("int"),
-                "long" => command.push_str("bigint"),
-                "float" => command.push_str("real"),
-                "double" => command.push_str("double precision"),
-                "string" => command.push_str("text"),
-                s if s.starts_with("array") => {
-                    let type_elems: Vec<&str> = s.split("<").collect();
-                    let dimension = type_elems.len() - 1;
-                    let td_arr_type = type_elems[type_elems.len() - 1]
-                        .trim_right_matches(">");
-                    let pg_arr_type = match td_arr_type {
-                        "int" => "int",
-                        "long" => "bigint",
-                        "float" => "real",
-                        "double" => "double precision",
-                        "string" => "text",
-                        s => {
-                            log!(error_log, "Unexpected ArrayType: {:?}", s);
-                            break 'outer;
-                        }
-                    };
-                    command.push_str(format!("{}{}", pg_arr_type,
-                                             "[]".repeat(dimension)).as_str())
-                }
-                s => {
-                    log!(error_log, "Unexpected SchemaType: {:?}", s);
-                    break 'outer;
-                }
+            else {
+                convert_simple_type_td_to_pg(td_type_name)
+            } {
+                Ok(name) => name,
+                Err(s) => log!(error_log, s)
             };
+            let pg_type_name_byte = pg_type_name.as_bytes();
+            colnames[j] = pgstrdup(pg_col_name_byte.len(), pg_col_name_byte);
+            coltypes[j] = pgstrdup(pg_type_name_byte.len(), pg_type_name_byte);
         }
-        command.push_str(format!("\n) SERVER {}\nOPTIONS (", server).as_str());
-        command.push_str(format!("apikey '{}',\n", apikey).as_str());
-        if endpoint.is_some() {
-            command.push_str(format!("endpoint '{}',\n", endpoint.unwrap()).as_str());
-        }
-        command.push_str(format!("database '{}',\n", database).as_str());
-        command.push_str(format!("query_engine '{}',\n", "presto").as_str());
-        command.push_str(format!("table '{}');", tab.name).as_str());
-        log!(debug_log, "import_schema: command={}", command);
-        commands.push(command);
     }
-    Ok(commands)
+    numtables
 }
