@@ -52,6 +52,12 @@ pub struct PgTableSchema {
     coltypes: *const *const c_void
 }
 
+#[repr(C)]
+pub struct PgTableSchemas {
+    numtables: size_t,
+    tables: *const *const PgTableSchema
+}
+
 #[derive(Debug)]
 enum ImportColumnType {
     Int,
@@ -797,20 +803,19 @@ pub extern fn get_tables(
     raw_apikey: *const c_char,
     raw_endpoint: *const c_char,
     raw_database: *const c_char,
-    mut tables_ptr: *const *const PgTableSchema,
     pgstrdup: extern fn(usize, &[u8]) -> *mut c_void,
     pgalloc: extern fn(usize) -> *mut c_void,
     debug_log: extern fn(usize, &[u8]),
-    error_log: extern fn(usize, &[u8]) -> !) -> usize {
+    error_log: extern fn(usize, &[u8]) -> !) -> *const PgTableSchemas {
 
     let apikey = convert_str_from_raw_str(raw_apikey);
     let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
     let database = convert_str_from_raw_str(raw_database);
 
-    log!(debug_log, "import_schema: entering");
-    log!(debug_log, "import_schema: apikey.len={:?}", apikey.len());
-    log!(debug_log, "import_schema: endpoint={:?}", endpoint);
-    log!(debug_log, "import_schema: database={:?}", database);
+    log!(debug_log, "get_tables: entering");
+    log!(debug_log, "get_tables: apikey.len={:?}", apikey.len());
+    log!(debug_log, "get_tables: endpoint={:?}", endpoint);
+    log!(debug_log, "get_tables: database={:?}", database);
 
     let client = create_client(apikey, &endpoint);
     let td_tables = match Retry::new(
@@ -819,10 +824,10 @@ pub extern fn get_tables(
     ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
         Ok(Ok(tables)) => tables,
         Ok(Err(err)) => {
-            log!(error_log, "import_schema: Failed to get tables. {:?}", err);
+            log!(error_log, "get_tables: Failed to get tables. {:?}", err);
         },
         Err(err) => {
-            log!(error_log, "import_schema: Failed to get tables. {:?}", err);
+            log!(error_log, "get_tables: Failed to get tables. {:?}", err);
         }
     };
 
@@ -833,7 +838,8 @@ pub extern fn get_tables(
             "float" => Ok(String::from("real")),
             "double" => Ok(String::from("double precision")),
             "string" => Ok(String::from("text")),
-            s => Err(String::from(format!("Unexpected TypeName: {:?}", s)))
+            other_type => Err(String::from(
+                format!("Unexpected TypeName: {:?}", other_type)))
         }
     };
 
@@ -848,28 +854,56 @@ pub extern fn get_tables(
         }
     };
 
+    // alloc for PgTableSchemas
+    let tbl_schemas_ptr = pgalloc(mem::size_of::<PgTableSchemas>())
+        as *mut PgTableSchemas;
+    let tbl_schemas = unsafe { &mut *tbl_schemas_ptr };
+
     let numtables = td_tables.len();
-    tables_ptr = pgalloc(mem::size_of::<*const PgTableSchema>() * numtables) as *const *const PgTableSchema;
+    log!(debug_log, "get_tables: num_tables={}", numtables);
+    tbl_schemas.numtables = numtables as size_t;
+
+    // alloc for PgTableSchemas.tables
+    let tbls_ptr_size = mem::size_of::<PgTableSchema>() * numtables;
+    log!(debug_log, "get_tables: allocated memory for tables: {}", tbls_ptr_size);
+    tbl_schemas.tables = pgalloc(tbls_ptr_size) as *const *const PgTableSchema;
     let tables = unsafe {
-        slice::from_raw_parts_mut(tables_ptr as *mut *mut PgTableSchema, numtables)
+        slice::from_raw_parts_mut(tbl_schemas.tables as *mut *mut PgTableSchema,
+                                  numtables)
     };
+
     for (i, tab) in td_tables.iter().enumerate() {
-        let pg_table_name_byte = tab.name.as_bytes();
+        log!(debug_log, "get_tables: table_name={}", tab.name);
+        // alloc for a PgTableSchema
+        tables[i] = pgalloc(mem::size_of::<PgTableSchema>()) as *mut PgTableSchema;
         let table = unsafe { &mut *tables[i] };
+
+        let pg_table_name_byte = tab.name.as_bytes();
         table.name = pgstrdup(pg_table_name_byte.len(), pg_table_name_byte);
 
         // I think td_client should decode schema string but now decoding here.
         let td_columns: Vec<Vec<String>> = serde_json::from_str(&tab.schema).unwrap();
         let numcolumns = td_columns.len();
+        log!(debug_log, "get_tables: num_colums={}", numcolumns);
         table.numcols = numcolumns as size_t;
 
-        table.colnames = pgalloc(mem::size_of::<*const c_void>() * numcolumns) as *const *const c_void;
-        let colnames: &mut [*mut c_void] = unsafe {
-            slice::from_raw_parts_mut(table.colnames as *mut *mut c_void, numcolumns)
+        // alloc for PgTableSchema.colnames
+        let cols_ptr_size = mem::size_of::<*const c_void>() * numcolumns;
+        log!(debug_log, "get_tables: allocated memory for column names: {}",
+             cols_ptr_size);
+        table.colnames = pgalloc(cols_ptr_size) as *const *const c_void;
+        let colnames = unsafe {
+            slice::from_raw_parts_mut(table.colnames as *mut *mut c_void,
+                                      numcolumns)
         };
-        table.coltypes = pgalloc(mem::size_of::<*const c_void>() * numcolumns) as *const *const c_void;
-        let coltypes: &mut [*mut c_void] = unsafe {
-            slice::from_raw_parts_mut(table.coltypes as *mut *mut c_void, numcolumns)
+
+        // alloc for PgTableSchema.coltypes
+        log!(debug_log, "get_tables: allocated memory for column types: {}",
+             cols_ptr_size);
+        table.coltypes = pgalloc(cols_ptr_size) as *const *const c_void;
+        let coltypes = unsafe {
+            slice::from_raw_parts_mut(table.coltypes as *mut *mut c_void,
+                                      numcolumns)
         };
 
         // convert data type from td to postgres
@@ -883,12 +917,12 @@ pub extern fn get_tables(
                 convert_simple_type_td_to_pg(td_type_name)
             } {
                 Ok(name) => name,
-                Err(s) => log!(error_log, s)
+                Err(msg) => log!(error_log, msg)
             };
             let pg_type_name_byte = pg_type_name.as_bytes();
             colnames[j] = pgstrdup(pg_col_name_byte.len(), pg_col_name_byte);
             coltypes[j] = pgstrdup(pg_type_name_byte.len(), pg_type_name_byte);
         }
     }
-    numtables
+    tbl_schemas_ptr as *const PgTableSchemas
 }

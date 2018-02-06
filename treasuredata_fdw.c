@@ -311,9 +311,10 @@ static bool treasuredataAnalyzeForeignTable(Relation relation,
         AcquireSampleRowsFunc *func,
         BlockNumber *totalpages);
 #endif
+#if PG_VERSION_NUM >= 90500
 static List *treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt,
         Oid serverOid);
-
+#endif
 
 /*
  * Helper functions
@@ -393,9 +394,10 @@ treasuredata_fdw_handler(PG_FUNCTION_ARGS)
 	/* Support functions for ANALYZE */
 	routine->AnalyzeForeignTable = treasuredataAnalyzeForeignTable;
 #endif
+#if PG_VERSION_NUM >= 90500
 	/* Support functions for IMPORT FOREIGN SCHEMA */
 	routine->ImportForeignSchema = treasuredataImportForeignSchema;
-
+#endif
 	PG_RETURN_POINTER(routine);
 }
 
@@ -2262,6 +2264,7 @@ analyze_row_processor(PGresult *res, int row, TdFdwAnalyzeState *astate)
 }
 #endif
 
+#if PG_VERSION_NUM >= 90500
 /*
  * Import a foreign schema
  */
@@ -2274,8 +2277,7 @@ treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	char		*apikey = NULL;
 	StringInfoData buf;
 	ListCell	*lc = NULL;
-	table_schema_t **tables = NULL;
-	int			numtables;
+	table_schemas_t *tables = NULL;
 	int			i, j;
 
 	/* Parse statement options */
@@ -2306,8 +2308,8 @@ treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 		         errmsg("query_engine is required for treasuredata_fdw foreign tables")));
 
 	ereport(DEBUG1,
-	        (errmsg("apikey: %s, endpoint: %s, query_engine: %s",
-	                apikey, endpoint, query_engine)));
+	        (errmsg("apikey.len: %zu, endpoint: %s, query_engine: %s",
+	                strlen(apikey), endpoint, query_engine)));
 	ereport(DEBUG1,
 	        (errmsg("remote_database: %s, server: %s",
 	                stmt->remote_schema, stmt->server_name)));
@@ -2317,11 +2319,11 @@ treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 
 	/* Note that imported tables will NOT include time column
 	   since TD API does not return time column.*/
-	numtables = getTables(apikey, endpoint,stmt->remote_schema, tables);
+	tables = getTables(apikey, endpoint,stmt->remote_schema);
 
-	for (i = 0; i < numtables; i++)
+	for (i = 0; i < tables->numtables; i++)
 	{
-		table_schema_t *table = tables[i];
+		table_schema_t *table = tables->tables[i];
 		bool		first_item = true;
 
 		resetStringInfo(&buf);
@@ -2375,6 +2377,7 @@ treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 
 	return commands;
 }
+#endif
 
 /*
  * Create a tuple from the specified row of the PGresult.

@@ -136,18 +136,15 @@ extern void import_commit(
     void (*error_log)(size_t, const char *)
 );
 
-extern int get_tables(
+extern table_schemas_t *get_tables(
     const char *apikey,
     const char *endpoint,
     const char *database,
-    table_schema_t **tables,
     void *(*pgstrdup)(size_t, const char*),
     void *(*pgalloc)(size_t),
     void (*debug_log)(size_t, const char *),
     void (*error_log)(size_t, const char *)
 );
-
-extern void release_table_resource(table_schema_t *tables);
 
 void *issueQuery(
     const char *apikey,
@@ -319,17 +316,15 @@ static void *pgstrdup(size_t len, const char *s)
 	return buf;
 }
 
-int getTables(
+table_schemas_t *getTables(
     const char *apikey,
     const char *endpoint,
-    const char *database,
-    table_schema_t **tables)
+    const char *database)
 {
 	return get_tables(
 	           apikey,
 	           endpoint,
 	           database,
-	           tables,
 	           pgstrdup,
 	           pgalloc,
 	           debug_log,

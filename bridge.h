@@ -13,11 +13,6 @@
 #ifndef TREASUREDATA_FDW_BRIDGE_H
 #define TREASUREDATA_FDW_BRIDGE_H
 
-#ifndef WITHOUT_PG
-#include "c.h"
-#include "nodes/pg_list.h"
-#endif
-
 typedef struct
 {
 	char *name;
@@ -25,6 +20,12 @@ typedef struct
 	char **colnames;
 	char **coltypes;
 } table_schema_t;
+
+typedef struct
+{
+	size_t numtables;
+	table_schema_t **tables;
+} table_schemas_t;
 
 extern void* issueQuery(
     const char *apikey,
@@ -83,11 +84,10 @@ extern size_t importAppend(void *import_state, const char **values);
 
 extern void importCommit(void *import_state);
 
-extern int getTables(
+extern table_schemas_t *getTables(
     const char *apikey,
     const char *endpoint,
-    const char *database,
-    table_schema_t **tables);
+    const char *database);
 
 #endif   /* TREASUREDATA_FDW_BRIDGE_H */
 
