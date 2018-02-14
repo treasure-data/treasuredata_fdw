@@ -84,7 +84,7 @@ extern size_t importAppend(void *import_state, const char **values);
 
 extern void importCommit(void *import_state);
 
-extern table_schemas_t *getTables(
+extern table_schemas_t *getTableSchemas(
     const char *apikey,
     const char *endpoint,
     const char *database);

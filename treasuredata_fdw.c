@@ -2319,7 +2319,7 @@ treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 
 	/* Note that imported tables will NOT include time column
 	   since TD API does not return time column.*/
-	tables = getTables(apikey, endpoint,stmt->remote_schema);
+	tables = getTableSchemas(apikey, endpoint, stmt->remote_schema);
 
 	for (i = 0; i < tables->numtables; i++)
 	{

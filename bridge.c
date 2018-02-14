@@ -136,7 +136,7 @@ extern void import_commit(
     void (*error_log)(size_t, const char *)
 );
 
-extern table_schemas_t *get_tables(
+extern table_schemas_t *get_table_schemas(
     const char *apikey,
     const char *endpoint,
     const char *database,
@@ -316,12 +316,12 @@ static void *pgstrdup(size_t len, const char *s)
 	return buf;
 }
 
-table_schemas_t *getTables(
+table_schemas_t *getTableSchemas(
     const char *apikey,
     const char *endpoint,
     const char *database)
 {
-	return get_tables(
+	return get_table_schemas(
 	           apikey,
 	           endpoint,
 	           database,
