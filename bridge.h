@@ -13,6 +13,20 @@
 #ifndef TREASUREDATA_FDW_BRIDGE_H
 #define TREASUREDATA_FDW_BRIDGE_H
 
+typedef struct
+{
+	char *name;
+	size_t numcols;
+	char **colnames;
+	char **coltypes;
+} table_schema_t;
+
+typedef struct
+{
+	size_t numtables;
+	table_schema_t **tables;
+} table_schemas_t;
+
 extern void* issueQuery(
     const char *apikey,
     const char *endpoint,
@@ -69,6 +83,11 @@ extern void *importBegin(
 extern size_t importAppend(void *import_state, const char **values);
 
 extern void importCommit(void *import_state);
+
+extern table_schemas_t *getTableSchemas(
+    const char *apikey,
+    const char *endpoint,
+    const char *database);
 
 #endif   /* TREASUREDATA_FDW_BRIDGE_H */
 

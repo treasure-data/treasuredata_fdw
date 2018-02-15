@@ -3,8 +3,12 @@ extern crate libc;
 extern crate retry;
 extern crate time;
 extern crate uuid;
+extern crate serde;
+extern crate serde_json;
 extern crate td_client;
-use libc::{c_char, c_void};
+use libc::{c_char, c_void, size_t};
+use std::mem;
+use std::slice;
 use std::ffi::CStr;
 use std::fs::{self, File};
 use std::path::Path;
@@ -38,6 +42,20 @@ pub struct TdImportState {
     column_names: Vec<String>,
     current_time: String,
     writable_chunk: TableImportWritableChunk
+}
+
+#[repr(C)]
+pub struct PgTableSchema {
+    name: *const c_void,
+    numcols: size_t,
+    colnames: *const *const c_void,
+    coltypes: *const *const c_void
+}
+
+#[repr(C)]
+pub struct PgTableSchemas {
+    numtables: size_t,
+    tables: *const *const PgTableSchema
 }
 
 #[derive(Debug)]
@@ -778,4 +796,151 @@ pub extern fn import_commit(
     };
 
     log!(debug_log, "import_commit: exiting");
+}
+
+#[no_mangle]
+pub extern fn get_table_schemas(
+    raw_apikey: *const c_char,
+    raw_endpoint: *const c_char,
+    raw_database: *const c_char,
+    pgstrdup: extern fn(usize, &[u8]) -> *mut c_void,
+    pgalloc: extern fn(usize) -> *mut c_void,
+    debug_log: extern fn(usize, &[u8]),
+    error_log: extern fn(usize, &[u8]) -> !) -> *const PgTableSchemas {
+
+    let apikey = convert_str_from_raw_str(raw_apikey);
+    let endpoint = convert_str_opt_from_raw_str(raw_endpoint);
+    let database = convert_str_from_raw_str(raw_database);
+
+    log!(debug_log, "get_tables: entering");
+    log!(debug_log, "get_tables: apikey.len={:?}", apikey.len());
+    log!(debug_log, "get_tables: endpoint={:?}", endpoint);
+    log!(debug_log, "get_tables: database={:?}", database);
+
+    let client = create_client(apikey, &endpoint);
+    let td_tables = match Retry::new(
+        &mut || client.tables(database),
+        &mut |result| test_if_needs_to_retry(result)
+    ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
+        Ok(Ok(tables)) => tables,
+        Ok(Err(err)) => {
+            log!(error_log, "get_tables: Failed to get tables. {:?}", err);
+        },
+        Err(err) => {
+            log!(error_log, "get_tables: Failed to get tables. {:?}", err);
+        }
+    };
+
+    fn get_angle_bracket_indices(td_type: &str) -> Result<Option<(usize, usize)>, String> {
+        match td_type.find('<') {
+            Some(left_index) =>
+                if td_type.ends_with('>') {
+                    Ok(Some((left_index, td_type.len() - 1)))
+                }
+                else {
+                    Err(String::from(format!("Unexpected TypeName: {:?}", td_type)))
+                },
+            None => Ok(None)
+        }
+    }
+
+    fn parse_td_type(td_type: &str) -> Result<String, String> {
+        match get_angle_bracket_indices(td_type) {
+            Ok(angle_bracket_indices) => match angle_bracket_indices {
+                Some((left_index, right_index)) => {
+                    let container_type = &td_type[0..left_index];
+                    let inner_type = &td_type[(left_index + 1)..right_index];
+                    match container_type {
+                        "array" => match parse_td_type(inner_type) {
+                            Ok(inner_type) => Ok(format!("{}[]", inner_type)),
+                            _ => Err(String::from(format!("Unexpected TypeName: {:?}", td_type)))
+                        },
+                        _ => Err(String::from(format!("Unexpected TypeName: {:?}", td_type)))
+                    }
+                },
+                None => match td_type {
+                    "int" => Ok(String::from("int")),
+                    "long" => Ok(String::from("bigint")),
+                    "float" => Ok(String::from("real")),
+                    "double" => Ok(String::from("double precision")),
+                    "string" => Ok(String::from("text")),
+                    _ => Err(String::from(format!("Unexpected TypeName: {:?}", td_type)))
+                }
+            },
+            Err(msg) => Err(msg)
+        }
+    }
+
+    // alloc for PgTableSchemas
+    let tbl_schemas_ptr = pgalloc(mem::size_of::<PgTableSchemas>())
+        as *mut PgTableSchemas;
+    let tbl_schemas = unsafe { &mut *tbl_schemas_ptr };
+
+    let numtables = td_tables.len();
+    log!(debug_log, "get_tables: num_tables={}", numtables);
+    tbl_schemas.numtables = numtables as size_t;
+
+    // alloc for PgTableSchemas.tables
+    let tbls_ptr_size = mem::size_of::<PgTableSchema>() * numtables;
+    log!(debug_log, "get_tables: allocated memory for tables: {}", tbls_ptr_size);
+    tbl_schemas.tables = pgalloc(tbls_ptr_size) as *const *const PgTableSchema;
+    let tables = unsafe {
+        slice::from_raw_parts_mut(tbl_schemas.tables as *mut *mut PgTableSchema,
+                                  numtables)
+    };
+
+    for (i, tab) in td_tables.iter().enumerate() {
+        log!(debug_log, "get_tables: table_name={}", tab.name);
+        // alloc for a PgTableSchema
+        tables[i] = pgalloc(mem::size_of::<PgTableSchema>()) as *mut PgTableSchema;
+        let table = unsafe { &mut *tables[i] };
+
+        let pg_table_name_byte = tab.name.as_bytes();
+        table.name = pgstrdup(pg_table_name_byte.len(), pg_table_name_byte);
+
+        // I think td_client should decode schema string but now decoding here.
+        let td_columns: Vec<Vec<String>> = match serde_json::from_str(&tab.schema) {
+            Ok(columns) => columns,
+            Err(err) => log!(error_log, "failed to parse table columns: {:?}", err)
+        };
+        let numcolumns = td_columns.len();
+        log!(debug_log, "get_tables: num_colums={}", numcolumns);
+        table.numcols = numcolumns as size_t;
+
+        // alloc for PgTableSchema.colnames
+        let cols_ptr_size = mem::size_of::<*const c_void>() * numcolumns;
+        log!(debug_log, "get_tables: allocating memory for column names: {}",
+             cols_ptr_size);
+        table.colnames = pgalloc(cols_ptr_size) as *const *const c_void;
+        let colnames = unsafe {
+            slice::from_raw_parts_mut(table.colnames as *mut *mut c_void,
+                                      numcolumns)
+        };
+
+        // alloc for PgTableSchema.coltypes
+        log!(debug_log, "get_tables: allocating memory for column types: {}",
+             cols_ptr_size);
+        table.coltypes = pgalloc(cols_ptr_size) as *const *const c_void;
+        let coltypes = unsafe {
+            slice::from_raw_parts_mut(table.coltypes as *mut *mut c_void,
+                                      numcolumns)
+        };
+
+        // convert data type from td to postgres
+        for (j, col) in td_columns.into_iter().enumerate() {
+            if col.len() < 2 {
+                log!(error_log, "invalid column definition format: {:?}", col)
+            }
+            let pg_col_name_byte = col[0].as_bytes();
+            let td_type_name = col[1].as_str();
+            let pg_type_name = match parse_td_type(td_type_name) {
+                Ok(name) => name,
+                Err(msg) => log!(error_log, msg)
+            };
+            let pg_type_name_byte = pg_type_name.as_bytes();
+            colnames[j] = pgstrdup(pg_col_name_byte.len(), pg_col_name_byte);
+            coltypes[j] = pgstrdup(pg_type_name_byte.len(), pg_type_name_byte);
+        }
+    }
+    tbl_schemas_ptr as *const PgTableSchemas
 }

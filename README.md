@@ -134,6 +134,26 @@ SERVER treasuredata_fdw OPTIONS (
         :
 ```
 
+You can also use IMPORT FOREIGN SCHEMA.
+It will import the tables on the specified Treasure Data database into the Postgres schema.
+```
+CREATE SCHEMA local_schema;
+IMPORT FOREIGN SCHEMA sample_datasets
+FROM SERVER treasuredata_server
+INTO local_schema OPTIONS (
+    apikey 'your_api_key',
+    query_engine 'presto'
+);
+\det+ local_schema.
+                                                                                     List of foreign tables
+    Schema    |   Table    |       Server        |                                                          FDW Options                                                           | Description
+--------------|------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------|-------------
+ local_schema | nasdaq     | treasuredata_server | (apikey 'your_api_key', database 'sample_datasets', query_engine 'presto', "table" 'nasdaq')     |
+ local_schema | www_access | treasuredata_server | (apikey 'your_api_key', database 'sample_datasets', query_engine 'presto', "table" 'www_access') |
+(2 rows)
+```
+Note that "time" column will NOT be imported by IMPORT FOREIGN SCHEMA.
+
 ## Table Options
 
 - apikey : API Key for Treasure Data. See [Get API Keys](https://docs.treasuredata.com/articles/get-apikey).
@@ -146,6 +166,9 @@ SERVER treasuredata_fdw OPTIONS (
 - import_file_size : Approximate maximum size of chunk files uploaded to Treasure Data. The default value is `134217728` (128MB).
 - atomic_import : Flag (`true` or `false`) of whether uploaded chunk files get visible atomically. The default value is `false`
 
+On IMPORT FOREIGN SCHEMA, you must specify apikey and query_engine. You can also specify endpoint which is optional.
+Those values will be set into the imported tables' option.
+You can use ALTER FOREIGN TABLE to modify table options if you want to modify after import.
 
 ## INSERT INTO statement
 

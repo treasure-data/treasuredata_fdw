@@ -201,10 +201,93 @@ SELECT COUNT(1) FROM td_array_test WHERE 'two' = any(str_array);
      1
 (1 row)
 
+-- ===================================================================
+-- import foreign schema
+-- ===================================================================
+CREATE SCHEMA local_schema;
+IMPORT FOREIGN SCHEMA sample_datasets
+FROM SERVER treasuredata_server
+INTO local_schema OPTIONS (
+    apikey '<%= @apikey %>',
+    query_engine '<%= @query_engine %>'
+);
+SELECT table_schema, table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'local_schema'
+ORDER BY table_name, ordinal_position;
+ table_schema | table_name | column_name |    data_type     
+--------------+------------+-------------+------------------
+ local_schema | nasdaq     | symbol      | text
+ local_schema | nasdaq     | open        | double precision
+ local_schema | nasdaq     | volume      | bigint
+ local_schema | nasdaq     | high        | double precision
+ local_schema | nasdaq     | low         | double precision
+ local_schema | nasdaq     | close       | double precision
+ local_schema | www_access | user        | integer
+ local_schema | www_access | host        | text
+ local_schema | www_access | path        | text
+ local_schema | www_access | referer     | text
+ local_schema | www_access | code        | bigint
+ local_schema | www_access | agent       | text
+ local_schema | www_access | size        | bigint
+ local_schema | www_access | method      | text
+(14 rows)
+
+SELECT code, size, method FROM local_schema.www_access ORDER BY size, code LIMIT 5;
+ code | size | method 
+------+------+--------
+  200 |   40 | GET
+  200 |   40 | GET
+  200 |   40 | GET
+  200 |   40 | GET
+  200 |   40 | GET
+(5 rows)
+
+IMPORT FOREIGN SCHEMA treasuredata_fdw LIMIT TO (array_test)
+FROM SERVER treasuredata_server
+INTO local_schema OPTIONS (
+    apikey '<%= @apikey %>',
+    query_engine '<%= @query_engine %>'
+);
+SELECT table_schema, table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'local_schema' AND table_name = 'array_test'
+ORDER BY table_name, ordinal_position;
+ table_schema | table_name |    column_name     | data_type 
+--------------+------------+--------------------+-----------
+ local_schema | array_test | str_array          | ARRAY
+ local_schema | array_test | int_array          | ARRAY
+ local_schema | array_test | long_array         | ARRAY
+ local_schema | array_test | float_array        | ARRAY
+ local_schema | array_test | double_array       | ARRAY
+ local_schema | array_test | str_array_array    | ARRAY
+ local_schema | array_test | int_array_array    | ARRAY
+ local_schema | array_test | long_array_array   | ARRAY
+ local_schema | array_test | float_array_array  | ARRAY
+ local_schema | array_test | double_array_array | ARRAY
+(10 rows)
+
+SELECT * FROM local_schema.array_test;
+    str_array    | int_array |             long_array             |  float_array  |    double_array     |     str_array_array      | int_array_array |                 long_array_array                  |   float_array_array   |      double_array_array       
+-----------------+-----------+------------------------------------+---------------+---------------------+--------------------------+-----------------+---------------------------------------------------+-----------------------+-------------------------------
+ {one,two,three} | {1,2,3}   | {1000000000,2000000000,3000000000} | {1.1,2.2,3.3} | {1.111,2.222,3.333} | {{one,two},{three,four}} | {{1,2},{3,4}}   | {{1000000000,2000000000},{3000000000,4000000000}} | {{1.1,2.2},{3.3,4.4}} | {{1.111,2.222},{3.333,4.444}}
+(1 row)
+
+SELECT COUNT(1) FROM local_schema.array_test WHERE 'two' = any(str_array);
+ count 
+-------
+     1
+(1 row)
+
+-- ===================================================================
+-- clean up
+-- ===================================================================
 DROP FOREIGN TABLE td_www_access_dst;
 DROP FOREIGN TABLE td_summary_in_www_access;
 DROP FOREIGN TABLE td_www_access;
 DROP FOREIGN TABLE td_quote_test;
 DROP FOREIGN TABLE td_array_test;
+SET client_min_messages = 'error'; -- pg9.6 print NOTICE log in the next command but pg9.5 does not
+DROP SCHEMA local_schema CASCADE;
 DROP SERVER treasuredata_server;
 DROP EXTENSION treasuredata_fdw CASCADE;

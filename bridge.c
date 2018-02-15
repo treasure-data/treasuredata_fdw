@@ -43,6 +43,8 @@ typedef struct
 
 static int add_nil(fetch_result_context *context);
 static int add_bytes(fetch_result_context *context, size_t len, const char *s);
+static void *pgstrdup(size_t len, const char* s);
+static void *pgalloc(size_t len);
 static void debug_log(size_t len, const char *msg);
 static void error_log(size_t len, const char *msg);
 
@@ -130,6 +132,16 @@ extern size_t import_append(
 
 extern void import_commit(
     void *import_state,
+    void (*debug_log)(size_t, const char *),
+    void (*error_log)(size_t, const char *)
+);
+
+extern table_schemas_t *get_table_schemas(
+    const char *apikey,
+    const char *endpoint,
+    const char *database,
+    void *(*pgstrdup)(size_t, const char*),
+    void *(*pgalloc)(size_t),
     void (*debug_log)(size_t, const char *),
     void (*error_log)(size_t, const char *)
 );
@@ -291,6 +303,34 @@ void importCommit(void *import_state)
 	    error_log);
 }
 
+static void *pgalloc(size_t len)
+{
+	return ALLOC(len);
+}
+
+static void *pgstrdup(size_t len, const char *s)
+{
+	char *buf = (char*)ALLOC(len + 1);
+	memcpy(buf, s, len);
+	buf[len] = '\0';
+	return buf;
+}
+
+table_schemas_t *getTableSchemas(
+    const char *apikey,
+    const char *endpoint,
+    const char *database)
+{
+	return get_table_schemas(
+	           apikey,
+	           endpoint,
+	           database,
+	           pgstrdup,
+	           pgalloc,
+	           debug_log,
+	           error_log);
+}
+
 static int add_nil(fetch_result_context *context)
 {
 	context->values[context->index] = NULL;
@@ -333,4 +373,3 @@ error_log(size_t len, const char *msg)
 {
 	call_elog(LOG_LEVEL_ERROR, len, msg);
 }
-
