@@ -24,5 +24,5 @@ before_install: curl -sSf https://static.rust-lang.org/rustup.sh | sudo sh
 install: make && sudo make install
 
 script:
-  - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress presto && travis_wait make installcheck; fi'
-  - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress hive && travis_wait make installcheck; fi'
+  - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress presto && travis_wait 40 make installcheck; fi'
+  - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress hive && travis_wait 40 make installcheck; fi'
