@@ -1162,7 +1162,11 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 	 * option, use attribute name.
 	 */
 	if (colname == NULL)
+#if PG_VERSION_NUM >= 110000
+		colname = get_attname(rte->relid, varattno, false);
+#else
 		colname = get_relid_attribute_name(rte->relid, varattno);
+#endif
 
 	appendStringInfoString(buf, td_quote_identifier(colname, query_engine_type));
 }
