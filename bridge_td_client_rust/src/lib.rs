@@ -1,4 +1,4 @@
-extern crate hyper;
+extern crate reqwest;
 extern crate libc;
 extern crate retry;
 extern crate time;
@@ -130,7 +130,7 @@ fn test_if_needs_to_retry<T>(result: &Result<T, TreasureDataError>) -> bool {
         &Ok(_) => true,
         &Err(ref err) => match err {
             &TreasureDataError::ApiError(status_code, _) =>
-                status_code.to_u16() / 100 == 4,
+                status_code.as_u16() / 100 == 4,
             _ => false
         }
     }
@@ -408,7 +408,7 @@ pub extern fn create_table(
         &mut |result| test_if_needs_to_retry(result)
     ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
         Ok(Ok(())) => (),
-        Ok(Err(TreasureDataError::ApiError(::hyper::status::StatusCode::Conflict, _))) => (),
+        Ok(Err(TreasureDataError::ApiError(::reqwest::StatusCode::CONFLICT, _))) => (),
         Ok(Err(err)) => log!(error_log, "create_table: Failed to create a table. {:?}", err),
         Err(err) => log!(error_log, "create_table: Failed to create a table. {:?}", err)
     }
@@ -560,7 +560,7 @@ pub extern fn delete_table(
         &mut |result| test_if_needs_to_retry(result)
     ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
         Ok(Ok(())) => (),
-        Ok(Err(TreasureDataError::ApiError(::hyper::status::StatusCode::NotFound, _))) => (),
+        Ok(Err(TreasureDataError::ApiError(::reqwest::StatusCode::NOT_FOUND, _))) => (),
         Ok(Err(err)) => log!(error_log, "delete_table: Failed to delete table {:?}", err),
         Err(err) => log!(error_log, "delete_table: Failed to delete table {:?}", err)
     }
