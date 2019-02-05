@@ -19,9 +19,13 @@ cache: cargo
 services:
   - postgresql
 
-before_install: curl -sSf https://static.rust-lang.org/rustup.sh | sudo sh
+before_install:
+  - curl -o rustup_install.sh https://sh.rustup.rs -sSf && sh rustup_install.sh -y
+  - export PATH=$HOME/.cargo/bin:$PATH
 
-install: make && sudo make install
+install:
+  - make
+  - sudo env PATH=$PATH make install
 
 script:
   - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress presto && travis_wait 40 make installcheck; fi'
