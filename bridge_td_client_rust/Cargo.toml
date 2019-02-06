@@ -7,11 +7,11 @@ authors = ["Mitsunori Komatsu <komamitsu@gmail.com>"]
 crate-type = ["staticlib"]
 
 [dependencies]
-hyper = '0.9'
+reqwest = '0.9'
 libc = '0.1'
 retry = '0.4'
 time = '0.1'
 uuid = { version = "0.4", features = ["v4"] }
 serde = "1.0"
 serde_json = "1.0"
-td-client = '0.7'
+td-client = '0.8'

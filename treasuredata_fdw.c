@@ -1033,7 +1033,7 @@ treasuredataPlanForeignModify(PlannerInfo *root,
 
 		for (attnum = 1; attnum <= tupdesc->natts; attnum++)
 		{
-			Form_pg_attribute attr = tupdesc->attrs[attnum - 1];
+			Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
 
 			if (!attr->attisdropped)
 				targetAttrs = lappend_int(targetAttrs, attnum);
@@ -1226,7 +1226,7 @@ treasuredataBeginForeignModify(ModifyTableState *mtstate,
 		foreach(lc, fmstate->target_attrs)
 		{
 			int			attnum = lfirst_int(lc);
-			Form_pg_attribute attr = RelationGetDescr(rel)->attrs[attnum - 1];
+			Form_pg_attribute attr = TupleDescAttr(RelationGetDescr(rel), attnum - 1);
 
 			Assert(!attr->attisdropped);
 
@@ -2532,7 +2532,7 @@ conversion_error_callback(void *arg)
 
 	if (errpos->cur_attno > 0 && errpos->cur_attno <= tupdesc->natts)
 		errcontext("column \"%s\" of foreign table \"%s\"",
-		           NameStr(tupdesc->attrs[errpos->cur_attno - 1]->attname),
+		           NameStr(TupleDescAttr(tupdesc, errpos->cur_attno - 1)->attname),
 		           RelationGetRelationName(errpos->rel));
 }
 
