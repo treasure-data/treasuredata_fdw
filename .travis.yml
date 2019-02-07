@@ -1,16 +1,29 @@
 dist: trusty
 
 addons:
-  postgresql: "9.5"
   apt:
     packages:
       - curl
       - wget
       - ca-certificates
       - build-essential
-      - postgresql-9.5
-      - postgresql-contrib-9.5
-      - postgresql-server-dev-9.5
+
+matrix:
+  include:
+    - addons:
+        postgresql: "9.5"
+        apt:
+          packages:
+            - postgresql-9.5
+            - postgresql-contrib-9.5
+            - postgresql-server-dev-9.5
+    - addons:
+        postgresql: "9.6"
+        apt:
+          packages:
+            - postgresql-9.6
+            - postgresql-contrib-9.6
+            - postgresql-server-dev-9.6
 
 language: c
 
