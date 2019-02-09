@@ -10,7 +10,7 @@ addons:
 
 stages:
   # - 11
-  - 10
+  # - 10
   - 9.6
   - 9.5
   - 9.4
@@ -28,14 +28,14 @@ matrix:
     #         - postgresql-11
     #         - postgresql-contrib-11
     #         - postgresql-server-dev-11
-    - stage: 10
-      addons:
-        postgresql: "10"
-        apt:
-          packages:
-            - postgresql-10
-            - postgresql-contrib-10
-            - postgresql-server-dev-10
+    # - stage: 10
+    #   addons:
+    #     postgresql: "10"
+    #     apt:
+    #       packages:
+    #         - postgresql-10
+    #         - postgresql-contrib-10
+    #         - postgresql-server-dev-10
     - stage: 9.6
       addons:
         postgresql: "9.6"
