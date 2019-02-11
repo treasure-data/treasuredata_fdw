@@ -4,6 +4,7 @@ RUSTLIB = $(RUSTLIBDIR)/libbridge_td_client.a
 MODULE_big = treasuredata_fdw
 OBJS = treasuredata_fdw.o bridge.o deparse.o option.o $(RUSTLIB)
 PGFILEDESC = "treasuredata_fdw - foreign data wrapper for Treasure Data"
+UNAME = $(shell uname)
 
 ifdef DEBUG
 ADDRESS_SANITIZE = -fsanitize=address
@@ -31,6 +32,10 @@ code-format:
 
 SHLIB_LINK = $(libpq) -lz $(ADDRESS_SANITIZE)
 LDFLAGS = $(ADDRESS_SANITIZE)
+ifeq ($(UNAME),Darwin)
+SHLIB_LINK += -framework CoreFoundation -framework CoreServices -framework Security
+LDFLAGS    += -framework CoreFoundation -framework CoreServices -framework Security
+endif
 
 EXTENSION = treasuredata_fdw
 DATA = treasuredata_fdw--1.2.sql treasuredata_fdw--1.0--1.1.sql treasuredata_fdw--1.1--1.2.sql
