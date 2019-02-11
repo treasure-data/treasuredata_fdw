@@ -7,7 +7,7 @@ addons:
       - build-essential
 
 stages:
-  # - 11
+  - 11
   - 10
   - 9.6
   - 9.5
@@ -15,18 +15,15 @@ stages:
 
 matrix:
   include:
-    # Test with PostgreSQL 11 fails due to this error
-    # "Refused to start PostgreSQL 11, because PostgreSQL 9.2 is currently running! You should first stop 9.2 instance..."
-    #
-    # - stage: 11
-    #   dist: xenial
-    #   addons:
-    #     postgresql: "11"
-    #     apt:
-    #       packages:
-    #         - postgresql-11
-    #         - postgresql-contrib-11
-    #         - postgresql-server-dev-11
+    - stage: 11
+      dist: xenial
+      addons:
+        postgresql: "11"
+        apt:
+          packages:
+            - postgresql-11
+            - postgresql-contrib-11
+            - postgresql-server-dev-11
     - stage: 10
       dist: xenial
       addons:
