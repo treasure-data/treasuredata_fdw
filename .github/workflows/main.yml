@@ -1,0 +1,39 @@
+name: CI
+
+on: [ push ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        pg_ver: [9.5, 9.6, 10, 11]
+
+    steps:
+    - name: Install PostgreSQL
+      run: |
+        echo 'deb http://apt.postgresql.org/pub/repos/apt/ bionic-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        sudo apt-get update
+        sudo apt-get -y install postgresql-${{ matrix.pg_ver }} postgresql-contrib-${{ matrix.pg_ver }} postgresql-server-dev-${{ matrix.pg_ver }} build-essential libssl-dev
+    - uses: actions/checkout@v2
+    - name: Build
+      run: make
+    - name: Install
+      run: sudo env PATH=$PATH make install $(if [[ "${{ matrix.pg_ver }}" = "11" ]]; then echo "with_llvm=no"; else echo ""; fi)
+    - name: Prepare for regression test
+      run: sudo -u postgres psql -c "CREATE ROLE ${USER} WITH SUPERUSER LOGIN"
+    - name: Test using Presto
+      run: ./setup_regress presto -r $USER && make installcheck
+    - name: Test using Hive
+      run: ./setup_regress hive -r $USER && make installcheck
+    - uses: actions/upload-artifact@v2
+      if: failure()
+      with:
+        name: test-result
+        path: ~/work/treasuredata_fdw/treasuredata_fdw/results/
+
+    env:
+      TD_TEST_APIKEY: ${{ secrets.td_apikey }}
