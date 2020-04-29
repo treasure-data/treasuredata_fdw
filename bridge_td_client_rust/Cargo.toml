@@ -8,10 +8,10 @@ crate-type = ["staticlib"]
 
 [dependencies]
 reqwest = '0.9'
-libc = '0.1'
+libc = '0.2'
 retry = '0.4'
 time = '0.1'
-uuid = { version = "0.4", features = ["v4"] }
+uuid = { version = "0.8", features = ["v4"] }
 serde = "1.0"
 serde_json = "1.0"
-td-client = '0.8'
+td-client = '0.9'

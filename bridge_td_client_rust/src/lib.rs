@@ -179,7 +179,7 @@ pub extern fn issue_query(
     let job_id = match Retry::new(
             &mut || client.issue_job(query_type.clone(), database, query,
                         None, None, None,
-                        Some(domain_key.simple().to_string().as_str()), None),
+                        Some(domain_key.to_simple().to_string().as_str()), None),
             &mut |result| test_if_needs_to_retry(result)
         ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
             Ok(Ok(job_id)) => job_id,
@@ -683,7 +683,7 @@ pub extern fn import_append(
     let column_size = import_state.column_size;
     let column_types = &import_state.column_types;
     let column_names = &import_state.column_names;
-    let mut writable_chunk = &mut import_state.writable_chunk;
+    let writable_chunk = &mut import_state.writable_chunk;
     let current_time = &import_state.current_time;
     writable_chunk.next_row(column_types.len() as u32).unwrap();
 
@@ -777,7 +777,7 @@ pub extern fn import_commit(
                 &mut || client.import_msgpack_gz_file_to_table(
                             database, table,
                             &readable_chunk.file_path.as_str(),
-                            Some(uuid.simple().to_string().as_str())),
+                            Some(uuid.to_simple().to_string().as_str())),
                 &mut |result| test_if_needs_to_retry(result)
             ).try(RETRY_COUNT).wait(RETRY_FIXED_INTERVAL_MILLI).execute() {
                 Ok(Ok(())) => (),
