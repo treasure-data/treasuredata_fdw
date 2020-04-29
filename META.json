@@ -2,15 +2,18 @@
    "name": "treasuredata_fdw",
    "abstract": "PostgreSQL Foreign Data Wrapper for Treasure Data",
    "description": "This extension implements a Foreign Data Wrapper for Treasure Data. It is supported on PostgreSQL 9.4 and above.",
-   "version": "1.2.14",
-   "maintainer": "Mitsunori Komatsu <komamitsu@gmail.com>",
+   "version": "1.2.15",
+   "maintainer": [
+       "Mitsunori Komatsu <komamitsu@gmail.com>",
+       "Keisuke Suzuki <ksuzuki@treasure-data.com>"
+   ],
    "license": "apache_2_0",
    "provides": {
       "treasuredata_fdw": {
          "abstract": "PostgreSQL Foreign Data Wrapper for Treasure Data",
          "file": "treasuredata_fdw--1.2.sql",
          "docfile": "README.md",
-         "version": "1.2.14"
+         "version": "1.2.15"
       }
    },
    "prereqs": {
