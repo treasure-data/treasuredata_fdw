@@ -88,6 +88,7 @@ typedef struct TdFdwRelationInfo
 	Cost		fdw_startup_cost;
 	Cost		fdw_tuple_cost;
 
+#if PG_VERSION_NUM >= 90600
 	/* Join information */
 	RelOptInfo *outerrel;
 	RelOptInfo *innerrel;
@@ -97,6 +98,7 @@ typedef struct TdFdwRelationInfo
 
 	/* Grouping information */
 	List	   *grouped_tlist;
+#endif
 
 	/* Cached catalog information. */
 	ForeignTable *table;
@@ -1235,6 +1237,7 @@ treasuredataEndForeignModify(EState *estate,
 	}
 }
 
+/* TODO: Revisit this function */
 /*
  * estimate_path_cost_size
  *		Get cost and size estimates for a foreign scan
