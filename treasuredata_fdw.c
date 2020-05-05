@@ -88,7 +88,7 @@ typedef struct TdFdwRelationInfo
 	Cost		fdw_startup_cost;
 	Cost		fdw_tuple_cost;
 
-#if PG_VERSION_NUM >= 90600
+#if PG_VERSION_NUM >= 100000
 	/* Join information */
 	RelOptInfo *outerrel;
 	RelOptInfo *innerrel;
@@ -274,7 +274,7 @@ static void treasuredataEndForeignModify(EState *estate,
 static List *treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt,
         Oid serverOid);
 #endif
-#if PG_VERSION_NUM >= 90600
+#if PG_VERSION_NUM >= 100000
 static void treasuredataGetForeignUpperPaths(PlannerInfo *root,
         UpperRelationKind stage,
         RelOptInfo *input_rel,
@@ -302,7 +302,7 @@ static HeapTuple make_tuple_from_result_row(void *td_client,
         List *retrieved_attrs,
         MemoryContext temp_context);
 static void conversion_error_callback(void *arg);
-#if PG_VERSION_NUM >= 90600
+#if PG_VERSION_NUM >= 100000
 static void add_foreign_grouping_paths(PlannerInfo *root,
 									   RelOptInfo *input_rel,
 									   RelOptInfo *grouped_rel,
@@ -341,7 +341,7 @@ treasuredata_fdw_handler(PG_FUNCTION_ARGS)
 	/* Support functions for IMPORT FOREIGN SCHEMA */
 	routine->ImportForeignSchema = treasuredataImportForeignSchema;
 #endif
-#if PG_VERSION_NUM >= 90600
+#if PG_VERSION_NUM >= 100000
     /* Support functions for upper relation push-down */
     routine->GetForeignUpperPaths = treasuredataGetForeignUpperPaths;
 #endif
@@ -1503,7 +1503,7 @@ treasuredataImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 #endif
 
 
-#if PG_VERSION_NUM >= 90600
+#if PG_VERSION_NUM >= 100000
 /*
  * treasuredataGetForeignUpperPaths
  *		Add paths for post-join operations like aggregation, grouping etc. if
