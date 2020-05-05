@@ -305,13 +305,20 @@ static void conversion_error_callback(void *arg);
 #if PG_VERSION_NUM >= 100000
 static void add_foreign_grouping_paths(PlannerInfo *root,
 									   RelOptInfo *input_rel,
-									   RelOptInfo *grouped_rel,
-									   GroupPathExtraData *extra);
+									   RelOptInfo *grouped_rel
+#if PG_VERSION_NUM >= 110000
+                                       , GroupPathExtraData *extra
+#endif
+                                       );
 static void merge_fdw_options(TdFdwRelationInfo *fpinfo,
 							  const TdFdwRelationInfo *fpinfo_o,
 							  const TdFdwRelationInfo *fpinfo_i);
-static bool foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
-								Node *havingQual);
+static bool foreign_grouping_ok(PlannerInfo *root,
+                                RelOptInfo *grouped_rel
+#if PG_VERSION_NUM >= 110000
+                                , Node *havingQual
+#endif
+                                );
 #endif
 
 /*
@@ -1539,8 +1546,11 @@ treasuredataGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 	switch (stage)
 	{
 		case UPPERREL_GROUP_AGG:
-			add_foreign_grouping_paths(root, input_rel, output_rel,
-									   (GroupPathExtraData *) extra);
+			add_foreign_grouping_paths(root, input_rel, output_rel
+#if PG_VERSION_NUM >= 110000
+                    , (GroupPathExtraData *) extra
+#endif
+                    );
 			break;
 		case UPPERREL_ORDERED:
             /*
@@ -1572,8 +1582,11 @@ treasuredataGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
  */
 static void
 add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
-						   RelOptInfo *grouped_rel,
-						   GroupPathExtraData *extra)
+						   RelOptInfo *grouped_rel
+#if PG_VERSION_NUM >= 110000
+                           , GroupPathExtraData *extra
+#endif
+                           )
 {
 	Query	   *parse = root->parse;
 	TdFdwRelationInfo *ifpinfo = input_rel->fdw_private;
@@ -1589,8 +1602,10 @@ add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 		!root->hasHavingQual)
 		return;
 
+#if PG_VERSION_NUM >= 110000
 	Assert(extra->patype == PARTITIONWISE_AGGREGATE_NONE ||
 		   extra->patype == PARTITIONWISE_AGGREGATE_FULL);
+#endif
 
 	/* save the input_rel as outerrel in fpinfo */
 	fpinfo->outerrel = input_rel;
@@ -1610,8 +1625,13 @@ add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	 * Use HAVING qual from extra. In case of child partition, it will have
 	 * translated Vars.
 	 */
+#if PG_VERSION_NUM >= 110000
 	if (!foreign_grouping_ok(root, grouped_rel, extra->havingQual))
 		return;
+#else
+	if (!foreign_grouping_ok(root, grouped_rel))
+		return;
+#endif
 
 	/*
 	 * Compute the selectivity and cost of the local_conds, so we don't have
@@ -1720,8 +1740,11 @@ merge_fdw_options(TdFdwRelationInfo *fpinfo,
  * this function to TdFdwRelationInfo of the input relation.
  */
 static bool
-foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
-					Node *havingQual)
+foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel
+#if PG_VERSION_NUM >= 110000
+        , Node *havingQual
+#endif
+        )
 {
 	Query	   *query = root->parse;
 	TdFdwRelationInfo *fpinfo = (TdFdwRelationInfo *) grouped_rel->fdw_private;
@@ -1858,6 +1881,7 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 		i++;
 	}
 
+#if PG_VERSION_NUM >= 110000
 	/*
 	 * Classify the pushable and non-pushable HAVING clauses and save them in
 	 * remote_conds and local_conds of the grouped rel's fpinfo.
@@ -1890,6 +1914,7 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 				fpinfo->local_conds = lappend(fpinfo->local_conds, rinfo);
 		}
 	}
+#endif
 
 	/*
 	 * If there are any local conditions, pull Vars and aggregates from it and
