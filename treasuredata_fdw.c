@@ -56,59 +56,6 @@ PG_FUNCTION_INFO_V1(treasuredata_fdw_handler);
 #define DEFAULT_FDW_TUPLE_COST		0.01
 
 /*
- * FDW-specific planner information kept in RelOptInfo.fdw_private for a
- * foreign table.  This information is collected by treasuredataGetForeignRelSize.
- */
-typedef struct TdFdwRelationInfo
-{
-	/*
-	 * True means that the relation can be pushed down. Always true for simple
-	 * foreign scan.
-	 */
-	bool		pushdown_safe;
-
-	/* baserestrictinfo clauses, broken down into safe and unsafe subsets. */
-	List	   *remote_conds;
-	List	   *local_conds;
-
-	/* Bitmap of attr numbers we need to fetch from the remote server. */
-	Bitmapset  *attrs_used;
-
-	/* Cost and selectivity of local_conds. */
-	QualCost	local_conds_cost;
-	Selectivity local_conds_sel;
-
-	/* Estimated size and cost for a scan with baserestrictinfo quals. */
-	double		rows;
-	int			width;
-	Cost		startup_cost;
-	Cost		total_cost;
-
-	/* Options extracted from catalogs. */
-	Cost		fdw_startup_cost;
-	Cost		fdw_tuple_cost;
-
-#if PG_VERSION_NUM >= 100000
-	/* Join information */
-	RelOptInfo *outerrel;
-	RelOptInfo *innerrel;
-
-	/* Upper relation information */
-	UpperRelationKind stage;
-
-	/* Grouping information */
-	List	   *grouped_tlist;
-#endif
-
-	/* Cached catalog information. */
-	ForeignTable *table;
-	ForeignServer *server;
-
-	/* Query engine type */
-	QueryEngineType query_engine_type;
-} TdFdwRelationInfo;
-
-/*
  * Indexes of FDW-private information stored in fdw_private lists.
  *
  * We store various information in ForeignScan.fdw_private to pass it from
@@ -377,6 +324,9 @@ treasuredataGetForeignRelSize(PlannerInfo *root,
 	 */
 	fpinfo = (TdFdwRelationInfo *) palloc0(sizeof(TdFdwRelationInfo));
 	baserel->fdw_private = (void *) fpinfo;
+
+    /* Base foreign tables need to be pushed down always. */
+    fpinfo->pushdown_safe = true;
 
 	/* Look up foreign-table catalog info. */
 	fpinfo->table = GetForeignTable(foreigntableid);
@@ -1523,6 +1473,15 @@ treasuredataGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 {
 	TdFdwRelationInfo *fpinfo;
 
+elog(DEBUG1, "AAAAAAA");
+if (!input_rel->fdw_private) {
+    elog(DEBUG1, "AAAAAAA-0");
+}
+
+if (!((TdFdwRelationInfo *) input_rel->fdw_private)->pushdown_safe) {
+    elog(DEBUG1, "AAAAAAA-1");
+}
+
 	/*
 	 * If input rel is not safe to pushdown, then simply return as we cannot
 	 * perform any post-join operations on the foreign server.
@@ -1531,6 +1490,8 @@ treasuredataGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 		!((TdFdwRelationInfo *) input_rel->fdw_private)->pushdown_safe)
 		return;
 
+elog(DEBUG1, "BBBBBBB");
+
 	/* Ignore stages we don't support; and skip any duplicate calls. */
 	if ((stage != UPPERREL_GROUP_AGG &&
 		 stage != UPPERREL_ORDERED &&
@@ -1538,14 +1499,19 @@ treasuredataGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 		output_rel->fdw_private)
 		return;
 
+elog(DEBUG1, "CCCCCCC");
+
 	fpinfo = (TdFdwRelationInfo *) palloc0(sizeof(TdFdwRelationInfo));
 	fpinfo->pushdown_safe = false;
 	fpinfo->stage = stage;
 	output_rel->fdw_private = fpinfo;
 
+elog(DEBUG1, "DDDDDDD");
+
 	switch (stage)
 	{
 		case UPPERREL_GROUP_AGG:
+elog(DEBUG1, "EEEEEEE");
 			add_foreign_grouping_paths(root, input_rel, output_rel
 #if PG_VERSION_NUM >= 110000
                     , (GroupPathExtraData *) extra
@@ -1626,11 +1592,15 @@ add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	 * translated Vars.
 	 */
 #if PG_VERSION_NUM >= 110000
-	if (!foreign_grouping_ok(root, grouped_rel, extra->havingQual))
+	if (!foreign_grouping_ok(root, grouped_rel, extra->havingQual)) {
+elog(DEBUG1, "FFFFFFF-0");
 		return;
+    }
 #else
-	if (!foreign_grouping_ok(root, grouped_rel))
+	if (!foreign_grouping_ok(root, grouped_rel)) {
+elog(DEBUG1, "FFFFFFF-1");
 		return;
+    }
 #endif
 
 	/*
@@ -1659,6 +1629,8 @@ add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	fpinfo->startup_cost = startup_cost;
 	fpinfo->total_cost = total_cost;
 
+elog(DEBUG1, "GGGGGGG");
+
 	/* Create and add foreign path to the grouping relation. */
 	grouppath = create_foreignscan_path(root,
                                    grouped_rel,
@@ -1671,8 +1643,11 @@ add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	                               NULL,
 	                               NIL);    /* no fdw_private list */
 
+elog(DEBUG1, "HHHHHHH");
+
 	/* Add generated path into grouped_rel by add_path(). */
 	add_path(grouped_rel, (Path *) grouppath);
+elog(DEBUG1, "IIIIIII");
 }
 
 /*
@@ -1755,8 +1730,10 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel
 	List	   *tlist = NIL;
 
 	/* We currently don't support pushing Grouping Sets. */
-	if (query->groupingSets)
+	if (query->groupingSets) {
+elog(DEBUG1, "FFFFFFF-0000");
 		return false;
+    }
 
 	/* Get the fpinfo of the underlying scan relation. */
 	ofpinfo = (TdFdwRelationInfo *) fpinfo->outerrel->fdw_private;
@@ -1766,8 +1743,10 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel
 	 * are required to be applied before performing aggregation.  Hence the
 	 * aggregate cannot be pushed down.
 	 */
-	if (ofpinfo->local_conds)
+	if (ofpinfo->local_conds) {
+elog(DEBUG1, "FFFFFFF-1111");
 		return false;
+    }
 
 	/*
 	 * Examine grouping expressions, as well as other expressions we'd need to
@@ -1801,8 +1780,10 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel
 			 * If any GROUP BY expression is not shippable, then we cannot
 			 * push down aggregation to the foreign server.
 			 */
-			if (!is_foreign_expr(root, grouped_rel, expr))
+			if (!is_foreign_expr(root, grouped_rel, expr)) {
+elog(DEBUG1, "FFFFFFF-2222");
 				return false;
+            }
 
 /* TODO */
 #if 0
@@ -1855,8 +1836,10 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel
 				 * don't have to check is_foreign_param, since that certainly
 				 * won't return true for any such expression.)
 				 */
-				if (!is_foreign_expr(root, grouped_rel, (Expr *) aggvars))
+				if (!is_foreign_expr(root, grouped_rel, (Expr *) aggvars)) {
+elog(DEBUG1, "FFFFFFF-3333");
 					return false;
+                }
 
 				/*
 				 * Add aggregates, if any, into the targetlist.  Plain Vars
@@ -1947,8 +1930,10 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel
 			 */
 			if (IsA(expr, Aggref))
 			{
-				if (!is_foreign_expr(root, grouped_rel, expr))
+				if (!is_foreign_expr(root, grouped_rel, expr)) {
+elog(DEBUG1, "FFFFFFF-4444");
 					return false;
+                }
 
 				tlist = add_to_flat_tlist(tlist, list_make1(expr));
 			}

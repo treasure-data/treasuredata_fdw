@@ -40,6 +40,61 @@ typedef enum
 	QUERY_ENGINE_PRESTO
 } QueryEngineType;
 
+/*
+ * FDW-specific planner information kept in RelOptInfo.fdw_private for a
+ * foreign table.  This information is collected by treasuredataGetForeignRelSize.
+ */
+typedef struct TdFdwRelationInfo
+{
+#if PG_VERSION_NUM >= 100000
+	/*
+	 * True means that the relation can be pushed down. Always true for simple
+	 * foreign scan.
+	 */
+	bool		pushdown_safe;
+#endif
+
+	/* baserestrictinfo clauses, broken down into safe and unsafe subsets. */
+	List	   *remote_conds;
+	List	   *local_conds;
+
+	/* Bitmap of attr numbers we need to fetch from the remote server. */
+	Bitmapset  *attrs_used;
+
+	/* Cost and selectivity of local_conds. */
+	QualCost	local_conds_cost;
+	Selectivity local_conds_sel;
+
+	/* Estimated size and cost for a scan with baserestrictinfo quals. */
+	double		rows;
+	int			width;
+	Cost		startup_cost;
+	Cost		total_cost;
+
+	/* Options extracted from catalogs. */
+	Cost		fdw_startup_cost;
+	Cost		fdw_tuple_cost;
+
+#if PG_VERSION_NUM >= 100000
+	/* Join information */
+	RelOptInfo *outerrel;
+	RelOptInfo *innerrel;
+
+	/* Upper relation information */
+	UpperRelationKind stage;
+
+	/* Grouping information */
+	List	   *grouped_tlist;
+#endif
+
+	/* Cached catalog information. */
+	ForeignTable *table;
+	ForeignServer *server;
+
+	/* Query engine type */
+	QueryEngineType query_engine_type;
+} TdFdwRelationInfo;
+
 extern void ExtractFdwOptions(ForeignTable *table, TdFdwOption *fdw_option);
 
 /* in deparse.c */

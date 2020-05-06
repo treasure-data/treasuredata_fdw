@@ -26,11 +26,13 @@
 #include "commands/defrem.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
+#include "optimizer/tlist.h"
 #include "optimizer/var.h"
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/typcache.h"
 #include "utils/syscache.h"
 
 
@@ -109,6 +111,12 @@ static void deparseVar(Var *node, deparse_expr_cxt *context);
 static void deparseConst(Const *node, deparse_expr_cxt *context);
 static void deparseParam(Param *node, deparse_expr_cxt *context);
 static void deparseArrayRef(ArrayRef *node, deparse_expr_cxt *context);
+static void deparseAggref(Aggref *node, deparse_expr_cxt *context);
+static void appendAggOrderBy(List *orderList, List *targetList,
+							 deparse_expr_cxt *context);
+static void appendFunctionName(Oid funcid, deparse_expr_cxt *context);
+static Node *deparseSortGroupClause(Index ref, List *tlist, bool force_colno,
+									deparse_expr_cxt *context);
 static void deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context);
 static void deparseOpExpr(OpExpr *node, deparse_expr_cxt *context);
 static void deparseOperatorName(StringInfo buf, Form_pg_operator opform);
@@ -215,6 +223,7 @@ foreign_expr_walker(Node *node,
                     foreign_loc_cxt *outer_cxt)
 {
 	bool		check_type = true;
+	TdFdwRelationInfo *fpinfo;
 	foreign_loc_cxt inner_cxt;
 	Oid			collation;
 	FDWCollateState state;
@@ -222,6 +231,9 @@ foreign_expr_walker(Node *node,
 	/* Need do nothing for empty subexpressions */
 	if (node == NULL)
 		return true;
+
+	/* May need server info from baserel's fdw_private struct */
+	fpinfo = (TdFdwRelationInfo *) (glob_cxt->foreignrel->fdw_private);
 
 	/* Set up inner_cxt for possible recursion to child nodes */
 	inner_cxt.collation = InvalidOid;
@@ -603,6 +615,138 @@ foreign_expr_walker(Node *node,
 
 				/* Don't apply exprType() to the list. */
 				check_type = false;
+			}
+			break;
+		case T_Aggref:
+			{
+				Aggref	   *agg = (Aggref *) node;
+				ListCell   *lc;
+                HeapTuple tuple;
+                char       *opername = NULL;
+                Oid         schema;
+
+				/* Not safe to pushdown when not in grouping context */
+				if (!IS_UPPER_REL(glob_cxt->foreignrel))
+					return false;
+
+				/* Only non-split aggregates are pushable. */
+				if (agg->aggsplit != AGGSPLIT_SIMPLE)
+					return false;
+
+#if 0
+				/* As usual, it must be shippable. */
+				if (!is_shippable(agg->aggfnoid, ProcedureRelationId, fpinfo))
+					return false;
+#endif
+
+                /* get function name and schema */
+                tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(agg->aggfnoid));
+                if (!HeapTupleIsValid(tuple))
+                {
+                    elog(ERROR, "cache lookup failed for function %u", agg->aggfnoid);
+                }
+                opername = pstrdup(((Form_pg_proc) GETSTRUCT(tuple))->proname.data);
+                schema = ((Form_pg_proc) GETSTRUCT(tuple))->pronamespace;
+                ReleaseSysCache(tuple);
+
+                /* ignore functions in other than the pg_catalog schema */
+                if (schema != PG_CATALOG_NAMESPACE)
+                    return false;
+
+                /* these function can be passed to Treasure Data */
+                if (!(strcmp(opername, "sum") == 0
+                            || strcmp(opername, "avg") == 0
+                            || strcmp(opername, "max") == 0
+                            || strcmp(opername, "min") == 0
+                            || strcmp(opername, "count") == 0))
+                {
+                    return false;
+                }
+
+				/*
+				 * Recurse to input args. aggdirectargs, aggorder and
+				 * aggdistinct are all present in args, so no need to check
+				 * their shippability explicitly.
+				 */
+				foreach(lc, agg->args)
+				{
+					Node	   *n = (Node *) lfirst(lc);
+
+					/* If TargetEntry, extract the expression from it */
+					if (IsA(n, TargetEntry))
+					{
+						TargetEntry *tle = (TargetEntry *) n;
+
+						n = (Node *) tle->expr;
+					}
+
+					if (!foreign_expr_walker(n, glob_cxt, &inner_cxt))
+						return false;
+				}
+
+/* TODO: Revisit here */
+#if 0
+				/*
+				 * For aggorder elements, check whether the sort operator, if
+				 * specified, is shippable or not.
+				 */
+				if (agg->aggorder)
+				{
+					ListCell   *lc;
+
+					foreach(lc, agg->aggorder)
+					{
+						SortGroupClause *srt = (SortGroupClause *) lfirst(lc);
+						Oid			sortcoltype;
+						TypeCacheEntry *typentry;
+						TargetEntry *tle;
+
+						tle = get_sortgroupref_tle(srt->tleSortGroupRef,
+												   agg->args);
+						sortcoltype = exprType((Node *) tle->expr);
+						typentry = lookup_type_cache(sortcoltype,
+													 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
+						/* Check shippability of non-default sort operator. */
+						if (srt->sortop != typentry->lt_opr &&
+							srt->sortop != typentry->gt_opr &&
+							!is_shippable(srt->sortop, OperatorRelationId,
+										  fpinfo))
+							return false;
+					}
+				}
+#endif
+
+				/* Check aggregate filter */
+				if (!foreign_expr_walker((Node *) agg->aggfilter,
+										 glob_cxt, &inner_cxt))
+					return false;
+
+				/*
+				 * If aggregate's input collation is not derived from a
+				 * foreign Var, it can't be sent to remote.
+				 */
+				if (agg->inputcollid == InvalidOid)
+					 /* OK, inputs are all noncollatable */ ;
+				else if (inner_cxt.state != FDW_COLLATE_SAFE ||
+						 agg->inputcollid != inner_cxt.collation)
+					return false;
+
+				/*
+				 * Detect whether node is introducing a collation not derived
+				 * from a foreign Var.  (If so, we just mark it unsafe for now
+				 * rather than immediately returning false, since the parent
+				 * node might not care.)
+				 */
+				collation = agg->aggcollid;
+				if (collation == InvalidOid)
+					state = FDW_COLLATE_NONE;
+				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+						 collation == inner_cxt.collation)
+					state = FDW_COLLATE_SAFE;
+				else if (collation == DEFAULT_COLLATION_OID)
+					state = FDW_COLLATE_NONE;
+				else
+					state = FDW_COLLATE_UNSAFE;
 			}
 			break;
 		default:
@@ -1302,6 +1446,9 @@ deparseExpr(Expr *node, deparse_expr_cxt *context)
 		case T_ArrayExpr:
 			deparseArrayExpr((ArrayExpr *) node, context);
 			break;
+		case T_Aggref:
+			deparseAggref((Aggref *) node, context);
+			break;
 		default:
 			elog(ERROR, "unsupported expression type for deparse: %d",
 			     (int) nodeTag(node));
@@ -1594,6 +1741,8 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 		return;
 	}
 
+/* TODO: Clean up */
+#if 0
 	/*
 	 * Normal function: display as proname(args).
 	 */
@@ -1608,6 +1757,17 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 	/* Deparse the function name ... */
 	proname = NameStr(procform->proname);
 	appendStringInfo(buf, "%s(", proname);
+#endif
+
+	/* Check if need to print VARIADIC (cf. ruleutils.c) */
+	use_variadic = node->funcvariadic;
+
+	/*
+	 * Normal function: display as proname(args).
+	 */
+	appendFunctionName(node->funcid, context);
+	appendStringInfoChar(buf, '(');
+
 	/* ... and all the arguments */
 	first = true;
 	foreach(arg, node->args)
@@ -1621,7 +1781,10 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 	}
 	appendStringInfoChar(buf, ')');
 
+/* TODO: Clean up */
+#if 0
 	ReleaseSysCache(proctup);
+#endif
 }
 
 /*
@@ -1952,6 +2115,252 @@ deparseArrayExpr(ArrayExpr *node, deparse_expr_cxt *context)
 		appendStringInfo(buf, "::%s",
 		                 format_type_with_typemod(node->array_typeid, -1));
 #endif
+}
+
+/*
+ * Deparse an Aggref node.
+ */
+static void
+deparseAggref(Aggref *node, deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+	bool		use_variadic;
+
+	/* Only basic, non-split aggregation accepted. */
+	Assert(node->aggsplit == AGGSPLIT_SIMPLE);
+
+#if 0
+	/* Check if need to print VARIADIC (cf. ruleutils.c) */
+	use_variadic = node->aggvariadic;
+#endif
+
+	/* Find aggregate name from aggfnoid which is a pg_proc entry */
+	appendFunctionName(node->aggfnoid, context);
+	appendStringInfoChar(buf, '(');
+
+	/* Add DISTINCT */
+	appendStringInfoString(buf, (node->aggdistinct != NIL) ? "DISTINCT " : "");
+
+#if 0
+	if (AGGKIND_IS_ORDERED_SET(node->aggkind))
+	{
+		/* Add WITHIN GROUP (ORDER BY ..) */
+		ListCell   *arg;
+		bool		first = true;
+
+		Assert(!node->aggvariadic);
+		Assert(node->aggorder != NIL);
+
+		foreach(arg, node->aggdirectargs)
+		{
+			if (!first)
+				appendStringInfoString(buf, ", ");
+			first = false;
+
+			deparseExpr((Expr *) lfirst(arg), context);
+		}
+
+		appendStringInfoString(buf, ") WITHIN GROUP (ORDER BY ");
+		appendAggOrderBy(node->aggorder, node->args, context);
+	}
+	else
+	{
+#endif
+		/* aggstar can be set only in zero-argument aggregates */
+		if (node->aggstar)
+			appendStringInfoChar(buf, '*');
+		else
+		{
+			ListCell   *arg;
+			bool		first = true;
+
+			/* Add all the arguments */
+			foreach(arg, node->args)
+			{
+				TargetEntry *tle = (TargetEntry *) lfirst(arg);
+				Node	   *n = (Node *) tle->expr;
+
+				if (tle->resjunk)
+					continue;
+
+				if (!first)
+					appendStringInfoString(buf, ", ");
+				first = false;
+
+/* TODO: Revisit here */
+#if 0
+				/* Add VARIADIC */
+				if (use_variadic && lnext(node->args, arg) == NULL)
+					appendStringInfoString(buf, "VARIADIC ");
+#endif
+
+				deparseExpr((Expr *) n, context);
+			}
+		}
+
+		/* Add ORDER BY */
+		if (node->aggorder != NIL)
+		{
+			appendStringInfoString(buf, " ORDER BY ");
+			appendAggOrderBy(node->aggorder, node->args, context);
+		}
+#if 0
+	}
+#endif
+
+	/* Add FILTER (WHERE ..) */
+	if (node->aggfilter != NULL)
+	{
+		appendStringInfoString(buf, ") FILTER (WHERE ");
+		deparseExpr((Expr *) node->aggfilter, context);
+	}
+
+	appendStringInfoChar(buf, ')');
+}
+
+/*
+ * Append ORDER BY within aggregate function.
+ */
+static void
+appendAggOrderBy(List *orderList, List *targetList, deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+	ListCell   *lc;
+	bool		first = true;
+
+	foreach(lc, orderList)
+	{
+		SortGroupClause *srt = (SortGroupClause *) lfirst(lc);
+		Node	   *sortexpr;
+		Oid			sortcoltype;
+		TypeCacheEntry *typentry;
+
+		if (!first)
+			appendStringInfoString(buf, ", ");
+		first = false;
+
+		sortexpr = deparseSortGroupClause(srt->tleSortGroupRef, targetList,
+										  false, context);
+		sortcoltype = exprType(sortexpr);
+		/* See whether operator is default < or > for datatype */
+		typentry = lookup_type_cache(sortcoltype,
+									 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
+		if (srt->sortop == typentry->lt_opr)
+			appendStringInfoString(buf, " ASC");
+		else if (srt->sortop == typentry->gt_opr)
+			appendStringInfoString(buf, " DESC");
+		else
+		{
+			HeapTuple	opertup;
+			Form_pg_operator operform;
+
+			appendStringInfoString(buf, " USING ");
+
+			/* Append operator name. */
+			opertup = SearchSysCache1(OPEROID, ObjectIdGetDatum(srt->sortop));
+			if (!HeapTupleIsValid(opertup))
+				elog(ERROR, "cache lookup failed for operator %u", srt->sortop);
+			operform = (Form_pg_operator) GETSTRUCT(opertup);
+			deparseOperatorName(buf, operform);
+			ReleaseSysCache(opertup);
+		}
+
+		if (srt->nulls_first)
+			appendStringInfoString(buf, " NULLS FIRST");
+		else
+			appendStringInfoString(buf, " NULLS LAST");
+	}
+}
+
+
+/*
+ * appendFunctionName
+ *		Deparses function name from given function oid.
+ */
+static void
+appendFunctionName(Oid funcid, deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+	HeapTuple	proctup;
+	Form_pg_proc procform;
+	const char *proname;
+
+/* TODO */
+#if 0
+	/*
+	 * Normal function: display as proname(args).
+	 */
+	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(node->funcid));
+	if (!HeapTupleIsValid(proctup))
+		elog(ERROR, "cache lookup failed for function %u", node->funcid);
+	procform = (Form_pg_proc) GETSTRUCT(proctup);
+
+	/* Check if need to print VARIADIC (cf. ruleutils.c) */
+	use_variadic = node->funcvariadic;
+
+	/* Deparse the function name ... */
+	proname = NameStr(procform->proname);
+	appendStringInfo(buf, "%s(", proname);
+#endif
+
+	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+	if (!HeapTupleIsValid(proctup))
+		elog(ERROR, "cache lookup failed for function %u", funcid);
+	procform = (Form_pg_proc) GETSTRUCT(proctup);
+
+	/* Always print the function name */
+	proname = NameStr(procform->proname);
+	appendStringInfoString(buf, proname);
+
+	ReleaseSysCache(proctup);
+}
+
+/*
+ * Appends a sort or group clause.
+ *
+ * Like get_rule_sortgroupclause(), returns the expression tree, so caller
+ * need not find it again.
+ */
+static Node *
+deparseSortGroupClause(Index ref, List *tlist, bool force_colno,
+					   deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+	TargetEntry *tle;
+	Expr	   *expr;
+
+	tle = get_sortgroupref_tle(ref, tlist);
+	expr = tle->expr;
+
+	if (force_colno)
+	{
+		/* Use column-number form when requested by caller. */
+		Assert(!tle->resjunk);
+		appendStringInfo(buf, "%d", tle->resno);
+	}
+	else if (expr && IsA(expr, Const))
+	{
+		/*
+		 * Force a typecast here so that we don't emit something like "GROUP
+		 * BY 2", which will be misconstrued as a column position rather than
+		 * a constant.
+		 */
+#if 0
+		deparseConst((Const *) expr, context, 1);
+#endif
+		deparseConst((Const *) expr, context);
+	}
+	else if (!expr || IsA(expr, Var))
+		deparseExpr(expr, context);
+	else
+	{
+		/* Always parenthesize the expression. */
+		appendStringInfoChar(buf, '(');
+		deparseExpr(expr, context);
+		appendStringInfoChar(buf, ')');
+	}
+
+	return (Node *) expr;
 }
 
 /*
