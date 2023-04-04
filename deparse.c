@@ -10,7 +10,7 @@
  *
  *-------------------------------------------------------------------------
  */
-#include "postgres.h"
+#include "server/postgres.h"
 
 #include "treasuredata_fdw.h"
 
