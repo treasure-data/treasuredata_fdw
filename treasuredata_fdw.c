@@ -13,7 +13,7 @@
 #include <unistd.h>
 #include <time.h>
 
-#include "server/postgres.h"
+#include "postgres.h"
 
 #include "treasuredata_fdw.h"
 #include "bridge.h"

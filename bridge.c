@@ -18,7 +18,7 @@
 
 #ifndef WITHOUT_PG
 
-#include <server/postgres.h>
+#include <postgres.h>
 #define LOG_LEVEL_DEBUG DEBUG1
 #define LOG_LEVEL_ERROR ERROR
 #define ALLOC(sz) (palloc(sz))
