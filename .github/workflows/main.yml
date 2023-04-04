@@ -19,7 +19,10 @@ jobs:
         sudo apt-get update
         sudo apt-get -y install postgresql-${{ matrix.pg_ver }} postgresql-contrib-${{ matrix.pg_ver }} postgresql-server-dev-${{ matrix.pg_ver }} build-essential libssl-dev
         sudo apt-get -y purge postgresql-14 postgresql-14-jit-llvm postgresql-client-14 postgresql-contrib-14 postgresql-doc-14 postgresql-doc-15
+    - name: Install rust toolchain
+      run: |
         sudo apt-get -y install rustc cargo
+        sudo rustup default stable
     - uses: actions/checkout@v2
     - name: Build
       run: make
