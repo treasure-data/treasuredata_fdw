@@ -18,7 +18,8 @@ jobs:
         wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
         sudo apt-get update
         sudo apt-get -y install postgresql-${{ matrix.pg_ver }} postgresql-contrib-${{ matrix.pg_ver }} postgresql-server-dev-${{ matrix.pg_ver }} build-essential libssl-dev
-        sudo apt-get purge -y postgresql-14 postgresql-14-jit-llvm postgresql-client-14 postgresql-contrib-14 postgresql-doc-14 postgresql-doc-15
+        sudo apt-get -y purge postgresql-14 postgresql-14-jit-llvm postgresql-client-14 postgresql-contrib-14 postgresql-doc-14 postgresql-doc-15
+        sudo apt-get -y install rustc cargo
     - uses: actions/checkout@v2
     - name: Build
       run: make
