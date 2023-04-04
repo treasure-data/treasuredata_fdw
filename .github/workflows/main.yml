@@ -22,7 +22,6 @@ jobs:
     - name: Install rust toolchain
       run: |
         sudo apt-get -y install rustc cargo
-        sudo rustup default stable
     - uses: actions/checkout@v2
     - name: Build
       run: make
