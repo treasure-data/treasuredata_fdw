@@ -34,7 +34,6 @@
 #include "optimizer/planmain.h"
 #include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
-#include "optimizer/var.h"
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
