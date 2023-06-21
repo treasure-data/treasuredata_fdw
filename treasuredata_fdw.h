@@ -15,7 +15,15 @@
 
 #include "foreign/foreign.h"
 #include "lib/stringinfo.h"
+
+#if PG_VERSION_NUM < 120000
 #include "nodes/relation.h"
+#endif
+
+#if PG_VERSION_NUM >= 120000
+#include "access/relation.h"
+#endif
+
 #include "utils/relcache.h"
 
 typedef struct TdFdwOption
