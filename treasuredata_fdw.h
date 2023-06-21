@@ -18,10 +18,10 @@
 
 #if PG_VERSION_NUM < 120000
 #include "nodes/relation.h"
-#endif
-
-#if PG_VERSION_NUM >= 120000
-#include "access/relation.h"
+#include "optimizer/var.h"
+#else
+#include "executor/tuptable.h"
+#include "optimizer/appendinfo.h"
 #endif
 
 #include "utils/relcache.h"
