@@ -20,7 +20,6 @@ jobs:
     - name: Install build environment
       run: |
         sudo apt-get -y install build-essential libssl-dev rustc cargo
-        sudo rustup default stable
     - name: Install PostgreSQL
       run: |
         sudo apt-get remove postgresql-client-14
