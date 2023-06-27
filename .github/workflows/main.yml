@@ -9,7 +9,7 @@ jobs:
 
     strategy:
       matrix:
-        pg_ver: [9.5, 9.6, 10, 11]
+        pg_ver: [11]
 
     steps:
     - name: Install PostgreSQL
