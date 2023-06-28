@@ -5,24 +5,30 @@ on: [ push ]
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     strategy:
       matrix:
-        pg_ver: [9.5, 9.6, 10, 11]
+        pg_ver: [11]
 
     steps:
-    - name: Install PostgreSQL
+    - name: Setup apt repo
       run: |
-        echo 'deb http://apt.postgresql.org/pub/repos/apt/ bionic-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
+        echo 'deb http://apt.postgresql.org/pub/repos/apt/ jammy-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
         wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
         sudo apt-get update
-        sudo apt-get -y install postgresql-${{ matrix.pg_ver }} postgresql-contrib-${{ matrix.pg_ver }} postgresql-server-dev-${{ matrix.pg_ver }} build-essential libssl-dev
+    - name: Install build environment
+      run: |
+        sudo apt-get -y install build-essential libssl-dev rustc cargo
+    - name: Install PostgreSQL
+      run: |
+        sudo apt-get remove postgresql-client-14
+        sudo apt-get -y install postgresql-${{ matrix.pg_ver }} postgresql-contrib-${{ matrix.pg_ver }} postgresql-server-dev-${{ matrix.pg_ver }}
     - uses: actions/checkout@v2
     - name: Build
       run: make
     - name: Install
-      run: sudo env PATH=$PATH make install $(if [[ "${{ matrix.pg_ver }}" = "11" ]]; then echo "with_llvm=no"; else echo ""; fi)
+      run: sudo env PATH="$PATH" make install $(if [[ "${{ matrix.pg_ver }}" = "11" ]]; then echo "with_llvm=no"; else echo ""; fi)
     - name: Prepare for regression test
       run: sudo -u postgres psql -c "CREATE ROLE ${USER} WITH SUPERUSER LOGIN"
     - name: Test using Presto
